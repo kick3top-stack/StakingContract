@@ -23,7 +23,7 @@ Multi-plan ERC20 staking: each stake is a separate **position** with its own loc
 
 **Pausable**: `pause()` / `unpause()` are **owner-only**. `createStake` and `unstake` use `whenNotPaused` so emergencies stop new stakes and exits; `depositRewards`, `addPlan`, `updatePlan`, and pause/unpause still work while paused so you can recover or top up rewards.
 
-**Reentrancy**: Lightweight mutex (`nonReentrant` on `createStake` / `unstake`) — compatible with proxies (no constructor-only OZ `ReentrancyGuard` init gap).
+**Reentrancy**: OpenZeppelin **`ReentrancyGuard`** (`nonReentrant` on `createStake` / `unstake`). It uses a dedicated EIP-7201 storage slot and works through an ERC-1967 proxy (the proxy slot starts unset; the guard only treats `ENTERED` as locked).
 
 **Reward liquidity**: The contract does not mint rewards. The owner must `depositRewards(amount)` (after `approve` to the **proxy** address) so `unstake` can pay rewards. Users only exit via `unstake` (principal + reward in one step).
 
@@ -88,6 +88,8 @@ npx hardhat compile
 ```bash
 npx hardhat test
 ```
+
+The suite (`test/StakingContract.js`) covers **proxy + `initialize`** (zero token/owner, double init, implementation pointer), **`addPlan` / `updatePlan` / `getPlan`** validation and snapshots, **`depositRewards`** access and allowance failures, **`Pausable`** (owner-only, double pause/unpause, user vs admin paths while paused), **`createStake` / `unstake`** validation, ERC-20 failures, insolvency on reward payout, penalty **0%** and **100%**, multi-user stakes, middle unstake index hygiene, **UUPS** upgrade auth and successful upgrade with state preserved, events, and reward math with small time slack where the VM advances time between txs.
 
 That uses Hardhat’s **in-process** network (nothing listens on a port; the chain is discarded when the process exits).
 

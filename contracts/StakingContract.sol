@@ -7,20 +7,17 @@ import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title StakingContract
  * @dev UUPS upgradeable + {Pausable}. Deploy behind an {ERC1967Proxy} and call `initialize`.
- *      Uses a lightweight reentrancy mutex (initializer-safe for proxies).
+ *      Uses OpenZeppelin {ReentrancyGuard} (EIP-7201 storage slot; safe through ERC-1967 proxy).
  */
-contract StakingContract is OwnableUpgradeable, PausableUpgradeable, UUPSUpgradeable {
+contract StakingContract is OwnableUpgradeable, PausableUpgradeable, UUPSUpgradeable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     uint private constant YEAR = 365 days;
-    uint256 private constant _NOT_ENTERED = 1;
-    uint256 private constant _ENTERED = 2;
-
-    error ReentrantCall();
 
     struct Plan {
         uint period;
@@ -48,9 +45,6 @@ contract StakingContract is OwnableUpgradeable, PausableUpgradeable, UUPSUpgrade
 
     mapping(address => uint[]) private _stakesByUser;
 
-    /// @dev Must be last new state in v1 for future upgrade-append safety (reentrancy mutex).
-    uint256 private _reentrancyStatus;
-
     event PlanAdded(uint indexed planId, uint period, uint apr, uint penalty);
     event PlanUpdated(uint indexed planId, uint period, uint apr, uint penalty);
     event StakeCreated(
@@ -73,7 +67,6 @@ contract StakingContract is OwnableUpgradeable, PausableUpgradeable, UUPSUpgrade
         __Pausable_init();
         require(_stakingToken != address(0), "Zero token");
         stakingToken = IERC20(_stakingToken);
-        _reentrancyStatus = _NOT_ENTERED;
     }
 
     function pause() external onlyOwner {
@@ -116,6 +109,11 @@ contract StakingContract is OwnableUpgradeable, PausableUpgradeable, UUPSUpgrade
         require(_amount > 0, "Amount must be > 0");
 
         Plan memory plan = _plans[_planId];
+        uint maxReward = _amount * plan.apr * plan.period / (100 * YEAR);
+        require(
+            stakingToken.balanceOf(address(this)) >= maxReward,
+            "Insufficient reward reserves"
+        );
         stakingToken.safeTransferFrom(msg.sender, address(this), _amount);
 
         uint stakeId = _nextStakeId++;
@@ -162,13 +160,6 @@ contract StakingContract is OwnableUpgradeable, PausableUpgradeable, UUPSUpgrade
     }
 
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
-
-    modifier nonReentrant() {
-        if (_reentrancyStatus == _ENTERED) revert ReentrantCall();
-        _reentrancyStatus = _ENTERED;
-        _;
-        _reentrancyStatus = _NOT_ENTERED;
-    }
 
     function _removeUserStake(address _user, uint _stakeId) private {
         uint[] storage ids = _stakesByUser[_user];
@@ -231,6 +222,10 @@ contract StakingContract is OwnableUpgradeable, PausableUpgradeable, UUPSUpgrade
         require(s.staker != address(0), "Stake not found");
         uint upper = block.timestamp < s.endTime ? block.timestamp : s.endTime;
         uint elapsed = upper > s.startTime ? upper - s.startTime : 0;
-        return s.amount * s.apr * elapsed / (100 * YEAR);
+        uint rawReward = s.amount * s.apr * elapsed / (100 * YEAR);
+        if (block.timestamp < s.endTime) {
+            return rawReward * (100 - s.penalty) / 100;
+        }
+        return rawReward;
     }
 }
