@@ -22,11 +22,6 @@ if (isMainnet && envBool("DEPLOY_MOCK_TOKEN")) {
   );
 }
 
-const staking = await ethers.deployContract("StakingContract", deployer);
-await staking.waitForDeployment();
-const stakingAddr = await staking.getAddress();
-console.log("StakingContract:", stakingAddr);
-
 let tokenAddr = process.env.STAKING_TOKEN?.trim();
 if (!tokenAddr && envBool("DEPLOY_MOCK_TOKEN")) {
   const mock = await ethers.deployContract("MockERC20", deployer);
@@ -35,13 +30,17 @@ if (!tokenAddr && envBool("DEPLOY_MOCK_TOKEN")) {
   console.log("MockERC20 (test token):", tokenAddr);
 }
 
-if (tokenAddr) {
-  const tx = await staking.addToken(tokenAddr);
-  await tx.wait();
-  console.log("Whitelisted staking token:", tokenAddr);
-} else {
-  console.log("No STAKING_TOKEN or DEPLOY_MOCK_TOKEN — call addToken() as owner before staking.");
+if (!tokenAddr) {
+  throw new Error(
+    "Set STAKING_TOKEN to the ERC20 address, or DEPLOY_MOCK_TOKEN=true for local/dev.",
+  );
 }
+
+const staking = await ethers.deployContract("StakingContract", [tokenAddr], deployer);
+await staking.waitForDeployment();
+const stakingAddr = await staking.getAddress();
+console.log("StakingContract:", stakingAddr);
+console.log("Staking token (immutable):", tokenAddr);
 
 if (envBool("SETUP_EXAMPLE_PLANS")) {
   const penalty = Number(process.env.EARLY_PENALTY_PERCENT ?? "50");
@@ -65,7 +64,7 @@ if (envBool("SETUP_EXAMPLE_PLANS")) {
 
 console.log(`
 Next steps (owner):
-  • If needed: addToken(<erc20>), addPlan(days, aprPercent, penaltyPercent)
-  • Approve the staking contract, then depositRewards(token, amount) to fund reward payouts
-  • Users: approve + createStake(planId, token, amount)
+  • addPlan / updatePlan as needed
+  • Approve staking contract, then depositRewards(amount) to fund reward payouts
+  • Users: approve + createStake(planId, amount)
 `);

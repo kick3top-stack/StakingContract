@@ -18,17 +18,15 @@ function rewardPerSeconds(amount, aprPercent, seconds) {
 async function deployFixture() {
   const [owner, alice, bob] = await ethers.getSigners();
   const token = await ethers.deployContract("MockERC20", owner);
-  const staking = await ethers.deployContract("StakingContract", owner);
   const tokenAddr = await token.getAddress();
+  const staking = await ethers.deployContract("StakingContract", [tokenAddr], owner);
   const stakingAddr = await staking.getAddress();
 
-  await staking.connect(owner).addToken(tokenAddr);
-  // 30-day lock, 10% APR, 50% early-unstake penalty on rewards
   await staking.connect(owner).addPlan(30, 10, 50);
 
   await token.mint(owner, ethers.parseEther("100000"));
   await token.connect(owner).approve(stakingAddr, ethers.MaxUint256);
-  await staking.connect(owner).depositRewards(tokenAddr, ethers.parseEther("50000"));
+  await staking.connect(owner).depositRewards(ethers.parseEther("50000"));
 
   await token.mint(alice, ethers.parseEther("10000"));
   await token.connect(alice).approve(stakingAddr, ethers.MaxUint256);
@@ -59,53 +57,33 @@ describe("StakingContract", function () {
       expect(plan.apr).to.equal(12n);
       expect(plan.penalty).to.equal(25n);
     });
-
-    it("soft-deletes plan: no new stakes, existing position still unwinds", async function () {
-      const { staking, owner, alice, tokenAddr } = await networkHelpers.loadFixture(deployFixture);
-      const amount = ethers.parseEther("100");
-      await staking.connect(alice).createStake(0n, tokenAddr, amount);
-
-      await staking.connect(owner).deletePlan(0n);
-      await expect(staking.getPlan(0n)).to.be.revertedWith("Plan not found");
-      await expect(staking.connect(alice).createStake(0n, tokenAddr, amount)).to.be.revertedWith(
-        "Plan not found",
-      );
-
-      await networkHelpers.time.increase(60n * 24n * 60n * 60n);
-      await expect(staking.connect(alice).unstake(0n)).to.not.revert(ethers);
-    });
   });
 
   describe("Staking & positions", function () {
-    it("creates independent positions per stake", async function () {
-      const { staking, alice, tokenAddr } = await networkHelpers.loadFixture(deployFixture);
-      await staking.connect(alice).createStake(0n, tokenAddr, ethers.parseEther("10"));
-      await staking.connect(alice).createStake(0n, tokenAddr, ethers.parseEther("20"));
+    it("creates independent positions per user and tracks stake ids", async function () {
+      const { staking, alice } = await networkHelpers.loadFixture(deployFixture);
+      await staking.connect(alice).createStake(0n, ethers.parseEther("10"));
+      await staking.connect(alice).createStake(0n, ethers.parseEther("20"));
+
+      expect(await staking.getStakeCountByUser(alice.address)).to.equal(2n);
+      const ids = await staking.getStakeIdsByUser(alice.address);
+      expect(ids.length).to.equal(2);
+      expect(ids[0]).to.equal(0n);
+      expect(ids[1]).to.equal(1n);
 
       const stakes = await staking.getStakesByUser(alice.address);
       expect(stakes.length).to.equal(2);
       expect(stakes[0].amount).to.equal(ethers.parseEther("10"));
       expect(stakes[1].amount).to.equal(ethers.parseEther("20"));
-      expect(stakes[0].stakeId).to.equal(0n);
-      expect(stakes[1].stakeId).to.equal(1n);
-    });
-
-    it("reverts stake with unsupported token", async function () {
-      const { staking, alice, owner } = await networkHelpers.loadFixture(deployFixture);
-      const other = await ethers.deployContract("MockERC20", owner);
-      await other.mint(alice, ethers.parseEther("1"));
-      await other.connect(alice).approve(await staking.getAddress(), ethers.MaxUint256);
-      await expect(
-        staking.connect(alice).createStake(0n, await other.getAddress(), 1n),
-      ).to.be.revertedWith("Token not supported");
+      expect(stakes[0].staker).to.equal(alice.address);
     });
   });
 
   describe("Rewards", function () {
     it("pendingReward matches formula after time passes", async function () {
-      const { staking, alice, tokenAddr } = await networkHelpers.loadFixture(deployFixture);
+      const { staking, alice } = await networkHelpers.loadFixture(deployFixture);
       const amount = ethers.parseEther("1000");
-      await staking.connect(alice).createStake(0n, tokenAddr, amount);
+      await staking.connect(alice).createStake(0n, amount);
 
       const elapsed = 10n * 24n * 60n * 60n;
       await networkHelpers.time.increase(elapsed);
@@ -115,9 +93,9 @@ describe("StakingContract", function () {
     });
 
     it("claim transfers rewards without unstaking principal", async function () {
-      const { staking, alice, token, tokenAddr } = await networkHelpers.loadFixture(deployFixture);
+      const { staking, alice, token } = await networkHelpers.loadFixture(deployFixture);
       const amount = ethers.parseEther("100");
-      await staking.connect(alice).createStake(0n, tokenAddr, amount);
+      await staking.connect(alice).createStake(0n, amount);
 
       await networkHelpers.time.increase(5n * 24n * 60n * 60n);
       const before = await token.balanceOf(alice.address);
@@ -140,9 +118,9 @@ describe("StakingContract", function () {
     });
 
     it("caps accrual at lock end then allows full claim", async function () {
-      const { staking, alice, tokenAddr } = await networkHelpers.loadFixture(deployFixture);
+      const { staking, alice } = await networkHelpers.loadFixture(deployFixture);
       const amount = ethers.parseEther("200");
-      await staking.connect(alice).createStake(0n, tokenAddr, amount);
+      await staking.connect(alice).createStake(0n, amount);
 
       const lockSeconds = 30n * 24n * 60n * 60n;
       await networkHelpers.time.increase(lockSeconds + 5n * 24n * 60n * 60n);
@@ -155,8 +133,8 @@ describe("StakingContract", function () {
     });
 
     it("reverts claim for non-staker", async function () {
-      const { staking, alice, bob, tokenAddr } = await networkHelpers.loadFixture(deployFixture);
-      await staking.connect(alice).createStake(0n, tokenAddr, ethers.parseEther("1"));
+      const { staking, alice, bob } = await networkHelpers.loadFixture(deployFixture);
+      await staking.connect(alice).createStake(0n, ethers.parseEther("1"));
       await networkHelpers.time.increase(24n * 60n * 60n);
       await expect(staking.connect(bob).claimReward(0n)).to.be.revertedWith("Not staker");
     });
@@ -164,9 +142,9 @@ describe("StakingContract", function () {
 
   describe("Unstake", function () {
     it("after lock: returns principal and remaining reward with no penalty", async function () {
-      const { staking, alice, token, tokenAddr } = await networkHelpers.loadFixture(deployFixture);
+      const { staking, alice, token } = await networkHelpers.loadFixture(deployFixture);
       const amount = ethers.parseEther("50");
-      await staking.connect(alice).createStake(0n, tokenAddr, amount);
+      await staking.connect(alice).createStake(0n, amount);
 
       const lockSeconds = 30n * 24n * 60n * 60n;
       await networkHelpers.time.increase(lockSeconds);
@@ -182,9 +160,9 @@ describe("StakingContract", function () {
     });
 
     it("early unstake applies penalty to reward portion only", async function () {
-      const { staking, alice, token, tokenAddr } = await networkHelpers.loadFixture(deployFixture);
+      const { staking, alice, token } = await networkHelpers.loadFixture(deployFixture);
       const amount = ethers.parseEther("100");
-      await staking.connect(alice).createStake(0n, tokenAddr, amount);
+      await staking.connect(alice).createStake(0n, amount);
 
       await networkHelpers.time.increase(15n * 24n * 60n * 60n);
       const preRaw = await staking.pendingReward(0n);
@@ -201,9 +179,9 @@ describe("StakingContract", function () {
     });
 
     it("claim before early unstake: claims are unpenalized; unstake pays penalized tail only", async function () {
-      const { staking, alice, token, tokenAddr } = await networkHelpers.loadFixture(deployFixture);
+      const { staking, alice, token } = await networkHelpers.loadFixture(deployFixture);
       const amount = ethers.parseEther("100");
-      await staking.connect(alice).createStake(0n, tokenAddr, amount);
+      await staking.connect(alice).createStake(0n, amount);
 
       await networkHelpers.time.increase(10n * 24n * 60n * 60n);
       const firstSlice = await staking.pendingReward(0n);

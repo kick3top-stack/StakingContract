@@ -1,22 +1,26 @@
 # StakingContract
 
-Multi-plan ERC20 staking: each stake is a separate **position** with its own lock end, APR, and reward accounting. Admins configure plans and whitelisted staking tokens; rewards are paid in the same token as the stake.
+Multi-plan ERC20 staking: each stake is a separate **position** with its own lock end, APR, and reward accounting. The contract is bound to **one** staking token (set in the constructor, `immutable` for cheap reads). Admins configure plans; rewards are paid in that same token.
 
 ## Architecture
 
 | Piece | Role |
 |--------|------|
-| `StakingContract.sol` | Core logic: plans, stakes, `claimReward`, `unstake`, `depositRewards` |
+| `StakingContract.sol` | Core logic: plans, per-user stake lists, `claimReward`, `unstake`, `depositRewards` |
 | `contracts/mocks/MockERC20.sol` | Test / local token with `mint` — optional deploy via `DEPLOY_MOCK_TOKEN` |
-| `scripts/deploy.js` | Deploy `StakingContract`; optional token whitelist and example plans |
+| `scripts/deploy.js` | Deploy ERC20 (optional mock), then `StakingContract(stakingToken)`; optional example plans |
 
-**Plans** (`struct Plan`): lock duration (`period` in seconds), `apr` as whole percent (e.g. `10` = 10%), `penalty` (0–100) applied to the **reward** on early `unstake`, and `active` (soft-delete via `deletePlan`).
+**Token**: `IERC20 public immutable stakingToken` — single ERC20 for principal and rewards.
 
-**Positions** (`struct Stake`): one row per `createStake` — `planId`, `token`, `amount`, `startTime`, `endTime`, `lastClaimTime`, `staker`, etc. A user may hold many stakes across plans and time.
+**Plans** (`struct Plan`): lock duration (`period` in seconds), `apr` as whole percent (e.g. `10` = 10%), `penalty` (0–100) on the **reward** portion at early `unstake`. Plans are identified by id `0 … nextPlanId - 1`; there is no plan deletion.
 
-**Access control**: OpenZeppelin `Ownable` for admin functions; `ReentrancyGuard` on user entrypoints.
+**Positions** (`struct Stake`): one row per `createStake` — `planId`, `amount`, `startTime`, `endTime`, `lastClaimTime`, `staker`. Stakes are indexed by user via `_stakesByUser` (`getStakeIdsByUser`, `getStakeCountByUser`, `getStakesByUser`).
 
-**Reward liquidity**: The contract does not mint rewards. The owner must `depositRewards` with the same ERC20 so `claimReward` / `unstake` transfers succeed.
+**Access control**: OpenZeppelin `Ownable` for admin functions; `ReentrancyGuard` on user entrypoints (`createStake`, `claimReward`, `unstake`).
+
+**Reward liquidity**: The contract does not mint rewards. The owner must `depositRewards(amount)` (after `approve`) so `claimReward` / `unstake` transfers succeed.
+
+View functions are declared **after** state-changing logic in the contract source.
 
 ## Reward formula
 
@@ -42,8 +46,6 @@ On **early** `unstake` (`block.timestamp < endTime`), the contract pays:
 1. **Decimals**: The formula is token-decimal agnostic; APR is applied to the raw `amount` units. Treat amounts as consistent with your token’s decimals.
 2. **Solvency**: There is no on-chain check that the contract holds enough ERC20 to cover all pending rewards.
 3. **Plan changes**: `updatePlan` affects **existing** open stakes on that `planId` (APR/period/penalty read from storage on each interaction).
-4. **Supported tokens**: Only `addToken` addresses may be staked; staking pulls principal via `safeTransferFrom`.
-5. **Soft-deleted plans**: `deletePlan` blocks new stakes and `getPlan`; existing stakes still unwind using stored plan parameters.
 
 ## Prerequisites
 
@@ -95,12 +97,12 @@ Tests use Hardhat 3 with Mocha, `ethers` v6, and `@nomicfoundation/hardhat-netwo
 
 ## Deploy
 
-`scripts/deploy.js` deploys `StakingContract` from the first signer on the selected network. Optional environment variables:
+The script deploys the staking token (unless `STAKING_TOKEN` is set), then `new StakingContract(stakingToken)`. **You must supply a token**: either `STAKING_TOKEN` or `DEPLOY_MOCK_TOKEN=true`.
 
 | Variable | Effect |
 |----------|--------|
-| `STAKING_TOKEN` | ERC20 address passed to `addToken` after deploy |
-| `DEPLOY_MOCK_TOKEN` | If `true` / `1` and `STAKING_TOKEN` is unset, deploy `MockERC20` and whitelist it (for local / dev only) |
+| `STAKING_TOKEN` | Existing ERC20 address passed to the `StakingContract` constructor |
+| `DEPLOY_MOCK_TOKEN` | If `true` / `1` and `STAKING_TOKEN` is unset, deploy `MockERC20` first (local / dev only) |
 | `SETUP_EXAMPLE_PLANS` | If `true` / `1`, add four plans: 30d @ 8%, 90d @ 12%, 180d @ 16%, 365d @ 20% APR |
 | `EARLY_PENALTY_PERCENT` | Used with `SETUP_EXAMPLE_PLANS` (default `50`); must be 0–100 |
 
@@ -109,12 +111,15 @@ On **Ethereum mainnet**, `DEPLOY_MOCK_TOKEN` is rejected by the script (use a re
 **Default in-process network** (state is not persisted after the process exits):
 
 ```bash
+set DEPLOY_MOCK_TOKEN=true
 npx hardhat run scripts/deploy.js
 ```
 
 **Local JSON-RPC node** (terminal A: `npx hardhat node`; default port `8545`):
 
 ```bash
+set DEPLOY_MOCK_TOKEN=true
+set SETUP_EXAMPLE_PLANS=true
 npx hardhat run scripts/deploy.js --network localhost
 ```
 
@@ -123,6 +128,7 @@ npx hardhat run scripts/deploy.js --network localhost
 ```bash
 set SEPOLIA_RPC_URL=https://...
 set SEPOLIA_PRIVATE_KEY=0x...
+set STAKING_TOKEN=0x...
 npx hardhat run scripts/deploy.js --network sepolia
 ```
 
@@ -137,7 +143,7 @@ set STAKING_TOKEN=0x...your_production_erc20...
 npx hardhat run scripts/deploy.js --network mainnet
 ```
 
-Add plans and reward funding in the same run if you intend to:
+Add plans in the same run if you intend to:
 
 ```bash
 set SETUP_EXAMPLE_PLANS=true
@@ -145,17 +151,9 @@ set SETUP_EXAMPLE_PLANS=true
 
 Review APRs, lock lengths, and penalties before enabling `SETUP_EXAMPLE_PLANS` on mainnet; they are real economic parameters. After deploy, verify the contract (e.g. Hardhat verify / Etherscan) and transfer `Ownable` to a multisig if required.
 
-Example one-shot local setup with mock token and example plans:
-
-```bash
-set DEPLOY_MOCK_TOKEN=true
-set SETUP_EXAMPLE_PLANS=true
-npx hardhat run scripts/deploy.js --network localhost
-```
-
 (Use `export` instead of `set` on Unix shells.)
 
-After deploy, the owner must fund rewards (`depositRewards` after `approve`, or transfer tokens and ensure allowance for `depositRewards`).
+After deploy, the owner must fund rewards: `approve(staking, amount)` then `depositRewards(amount)`.
 
 ## Hardhat config
 
