@@ -2,4 +2,5 @@
 /* tslint:disable */
 /* eslint-disable */
 export * as mocks from './mocks/index.js';
+export * as proxy from './proxy/index.js';
 export { StakingContract__factory } from './StakingContract__factory.js';

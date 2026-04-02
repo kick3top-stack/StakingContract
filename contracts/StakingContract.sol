@@ -1,32 +1,44 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract StakingContract is Ownable, ReentrancyGuard {
+/**
+ * @title StakingContract
+ * @dev UUPS upgradeable + {Pausable}. Deploy behind an {ERC1967Proxy} and call `initialize`.
+ *      Uses a lightweight reentrancy mutex (initializer-safe for proxies).
+ */
+contract StakingContract is OwnableUpgradeable, PausableUpgradeable, UUPSUpgradeable {
     using SafeERC20 for IERC20;
 
     uint private constant YEAR = 365 days;
+    uint256 private constant _NOT_ENTERED = 1;
+    uint256 private constant _ENTERED = 2;
+
+    error ReentrantCall();
 
     struct Plan {
-        uint period; // lock duration (seconds)
-        uint apr; // whole percent, e.g. 10 = 10%
-        uint penalty; // early-unstake penalty on rewards, 0–100
+        uint period;
+        uint apr;
+        uint penalty;
     }
 
     struct Stake {
         uint planId;
         uint amount;
+        uint apr;
+        uint penalty;
         uint startTime;
         uint endTime;
-        uint lastClaimTime;
         address staker;
     }
 
-    IERC20 public immutable stakingToken;
+    IERC20 public stakingToken;
 
     mapping(uint => Plan) private _plans;
     uint private _nextPlanId;
@@ -34,18 +46,42 @@ contract StakingContract is Ownable, ReentrancyGuard {
     mapping(uint => Stake) private _stakes;
     uint private _nextStakeId;
 
-    /// @notice stake IDs per user (each position is independent)
     mapping(address => uint[]) private _stakesByUser;
+
+    /// @dev Must be last new state in v1 for future upgrade-append safety (reentrancy mutex).
+    uint256 private _reentrancyStatus;
 
     event PlanAdded(uint indexed planId, uint period, uint apr, uint penalty);
     event PlanUpdated(uint indexed planId, uint period, uint apr, uint penalty);
-    event StakeCreated(uint indexed stakeId, address indexed staker, uint indexed planId, uint amount);
+    event StakeCreated(
+        uint indexed stakeId,
+        address indexed staker,
+        uint indexed planId,
+        uint amount,
+        uint apr,
+        uint penalty
+    );
     event Unstaked(uint indexed stakeId, address indexed staker, uint amount, uint reward);
-    event RewardClaimed(uint indexed stakeId, address indexed staker, uint reward);
 
-    constructor(IERC20 _stakingToken) Ownable(msg.sender) {
-        require(address(_stakingToken) != address(0), "Zero token");
-        stakingToken = _stakingToken;
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(address _stakingToken, address initialOwner) public initializer {
+        __Ownable_init(initialOwner);
+        __Pausable_init();
+        require(_stakingToken != address(0), "Zero token");
+        stakingToken = IERC20(_stakingToken);
+        _reentrancyStatus = _NOT_ENTERED;
+    }
+
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    function unpause() external onlyOwner {
+        _unpause();
     }
 
     function addPlan(uint _days, uint _apr, uint _penalty) external onlyOwner {
@@ -57,6 +93,7 @@ contract StakingContract is Ownable, ReentrancyGuard {
         emit PlanAdded(planId, _days * 1 days, _apr, _penalty);
     }
 
+    /// @notice Updates the plan template for *new* stakes only.
     function updatePlan(uint _planId, uint _days, uint _apr, uint _penalty) external onlyOwner {
         require(_planId < _nextPlanId, "Plan not found");
         require(_days > 0, "Period must be > 0");
@@ -69,13 +106,12 @@ contract StakingContract is Ownable, ReentrancyGuard {
         emit PlanUpdated(_planId, _days * 1 days, _apr, _penalty);
     }
 
-    /// @notice Pull reward budget into the contract (same token as staking)
     function depositRewards(uint _amount) external onlyOwner {
         require(_amount > 0, "Amount must be > 0");
         stakingToken.safeTransferFrom(msg.sender, address(this), _amount);
     }
 
-    function createStake(uint _planId, uint _amount) external nonReentrant {
+    function createStake(uint _planId, uint _amount) external whenNotPaused nonReentrant {
         require(_planId < _nextPlanId, "Plan not found");
         require(_amount > 0, "Amount must be > 0");
 
@@ -87,46 +123,30 @@ contract StakingContract is Ownable, ReentrancyGuard {
         _stakes[stakeId] = Stake({
             planId: _planId,
             amount: _amount,
+            apr: plan.apr,
+            penalty: plan.penalty,
             startTime: t,
             endTime: t + plan.period,
-            lastClaimTime: t,
             staker: msg.sender
         });
         _stakesByUser[msg.sender].push(stakeId);
 
-        emit StakeCreated(stakeId, msg.sender, _planId, _amount);
+        emit StakeCreated(stakeId, msg.sender, _planId, _amount, plan.apr, plan.penalty);
     }
 
-    function claimReward(uint _stakeId) external nonReentrant {
+    function unstake(uint _stakeId) external whenNotPaused nonReentrant {
         Stake storage s = _stakes[_stakeId];
         require(s.staker == msg.sender, "Not staker");
 
-        Plan storage plan = _plans[s.planId];
-        uint elapsed = _clampElapsed(s.lastClaimTime, s.endTime);
-        uint reward = s.amount * plan.apr * elapsed / (100 * YEAR);
-        require(reward > 0, "No reward to claim");
-
-        s.lastClaimTime = block.timestamp < s.endTime ? block.timestamp : s.endTime;
-
-        stakingToken.safeTransfer(msg.sender, reward);
-        emit RewardClaimed(_stakeId, msg.sender, reward);
-    }
-
-    function unstake(uint _stakeId) external nonReentrant {
-        Stake storage s = _stakes[_stakeId];
-        require(s.staker == msg.sender, "Not staker");
-
-        Plan storage plan = _plans[s.planId];
-        bool isEarly = block.timestamp < s.endTime;
+        uint upper = block.timestamp < s.endTime ? block.timestamp : s.endTime;
+        uint elapsed = upper > s.startTime ? upper - s.startTime : 0;
+        uint rawReward = s.amount * s.apr * elapsed / (100 * YEAR);
 
         uint reward;
-        if (isEarly) {
-            uint elapsed = block.timestamp - s.lastClaimTime;
-            uint rawReward = s.amount * plan.apr * elapsed / (100 * YEAR);
-            reward = rawReward * (100 - plan.penalty) / 100;
+        if (block.timestamp < s.endTime) {
+            reward = rawReward * (100 - s.penalty) / 100;
         } else {
-            uint elapsed = _clampElapsed(s.lastClaimTime, s.endTime);
-            reward = s.amount * plan.apr * elapsed / (100 * YEAR);
+            reward = rawReward;
         }
 
         uint principal = s.amount;
@@ -141,10 +161,13 @@ contract StakingContract is Ownable, ReentrancyGuard {
         emit Unstaked(_stakeId, msg.sender, principal, reward);
     }
 
-    function _clampElapsed(uint lastClaimTime, uint endTime) private view returns (uint) {
-        uint to = block.timestamp < endTime ? block.timestamp : endTime;
-        if (to <= lastClaimTime) return 0;
-        return to - lastClaimTime;
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+
+    modifier nonReentrant() {
+        if (_reentrancyStatus == _ENTERED) revert ReentrantCall();
+        _reentrancyStatus = _ENTERED;
+        _;
+        _reentrancyStatus = _NOT_ENTERED;
     }
 
     function _removeUserStake(address _user, uint _stakeId) private {
@@ -166,6 +189,11 @@ contract StakingContract is Ownable, ReentrancyGuard {
     // Views (kept last)
     // -------------------------------------------------------------------------
 
+    /// @notice ERC-1967 implementation address (only meaningful when called via proxy).
+    function implementation() external view returns (address) {
+        return ERC1967Utils.getImplementation();
+    }
+
     function getPlan(uint _planId) external view returns (Plan memory) {
         require(_planId < _nextPlanId, "Plan not found");
         return _plans[_planId];
@@ -177,7 +205,6 @@ contract StakingContract is Ownable, ReentrancyGuard {
         return s;
     }
 
-    /// @notice All stake IDs owned by `user` (order may change after unstakes)
     function getStakeIdsByUser(address _user) external view returns (uint[] memory) {
         return _stakesByUser[_user];
     }
@@ -202,8 +229,8 @@ contract StakingContract is Ownable, ReentrancyGuard {
     function pendingReward(uint _stakeId) external view returns (uint) {
         Stake storage s = _stakes[_stakeId];
         require(s.staker != address(0), "Stake not found");
-        Plan storage plan = _plans[s.planId];
-        uint elapsed = _clampElapsed(s.lastClaimTime, s.endTime);
-        return s.amount * plan.apr * elapsed / (100 * YEAR);
+        uint upper = block.timestamp < s.endTime ? block.timestamp : s.endTime;
+        uint elapsed = upper > s.startTime ? upper - s.startTime : 0;
+        return s.amount * s.apr * elapsed / (100 * YEAR);
     }
 }

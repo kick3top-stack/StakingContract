@@ -6,60 +6,100 @@ import type { TypedContractEvent, TypedDeferredTopicFilter, TypedEventLog, Typed
   
 export declare namespace StakingContract {
       
-    export type PlanStruct = {period: BigNumberish, apr: BigNumberish, penalty: BigNumberish, active: boolean}
+    export type PlanStruct = {period: BigNumberish, apr: BigNumberish, penalty: BigNumberish}
 
-    export type PlanStructOutput = [period: bigint, apr: bigint, penalty: bigint, active: boolean] & {period: bigint, apr: bigint, penalty: bigint, active: boolean }
+    export type PlanStructOutput = [period: bigint, apr: bigint, penalty: bigint] & {period: bigint, apr: bigint, penalty: bigint }
   
 
-    export type StakeStruct = {planId: BigNumberish, stakeId: BigNumberish, token: AddressLike, amount: BigNumberish, startTime: BigNumberish, endTime: BigNumberish, lastClaimTime: BigNumberish, claimedReward: BigNumberish, staker: AddressLike}
+    export type StakeStruct = {planId: BigNumberish, amount: BigNumberish, apr: BigNumberish, penalty: BigNumberish, startTime: BigNumberish, endTime: BigNumberish, staker: AddressLike}
 
-    export type StakeStructOutput = [planId: bigint, stakeId: bigint, token: string, amount: bigint, startTime: bigint, endTime: bigint, lastClaimTime: bigint, claimedReward: bigint, staker: string] & {planId: bigint, stakeId: bigint, token: string, amount: bigint, startTime: bigint, endTime: bigint, lastClaimTime: bigint, claimedReward: bigint, staker: string }
+    export type StakeStructOutput = [planId: bigint, amount: bigint, apr: bigint, penalty: bigint, startTime: bigint, endTime: bigint, staker: string] & {planId: bigint, amount: bigint, apr: bigint, penalty: bigint, startTime: bigint, endTime: bigint, staker: string }
   
     }
 
   export interface StakingContractInterface extends Interface {
-    getFunction(nameOrSignature: "addPlan" | "addToken" | "claimReward" | "createStake" | "deletePlan" | "depositRewards" | "getPlan" | "getStake" | "getStakesByUser" | "owner" | "pendingReward" | "renounceOwnership" | "transferOwnership" | "unstake" | "updatePlan"): FunctionFragment;
+    getFunction(nameOrSignature: "UPGRADE_INTERFACE_VERSION" | "addPlan" | "createStake" | "depositRewards" | "getPlan" | "getStake" | "getStakeCountByUser" | "getStakeIdsByUser" | "getStakesByUser" | "implementation" | "initialize" | "owner" | "pause" | "paused" | "pendingReward" | "proxiableUUID" | "renounceOwnership" | "stakingToken" | "transferOwnership" | "unpause" | "unstake" | "updatePlan" | "upgradeToAndCall"): FunctionFragment;
 
-    getEvent(nameOrSignatureOrTopic: "OwnershipTransferred" | "PlanAdded" | "PlanDeleted" | "PlanUpdated" | "RewardClaimed" | "StakeCreated" | "TokenAdded" | "Unstaked"): EventFragment;
+    getEvent(nameOrSignatureOrTopic: "Initialized" | "OwnershipTransferred" | "Paused" | "PlanAdded" | "PlanUpdated" | "StakeCreated" | "Unpaused" | "Unstaked" | "Upgraded"): EventFragment;
 
-    encodeFunctionData(functionFragment: 'addPlan', values: [BigNumberish, BigNumberish, BigNumberish]): string;
-encodeFunctionData(functionFragment: 'addToken', values: [AddressLike]): string;
-encodeFunctionData(functionFragment: 'claimReward', values: [BigNumberish]): string;
-encodeFunctionData(functionFragment: 'createStake', values: [BigNumberish, AddressLike, BigNumberish]): string;
-encodeFunctionData(functionFragment: 'deletePlan', values: [BigNumberish]): string;
-encodeFunctionData(functionFragment: 'depositRewards', values: [AddressLike, BigNumberish]): string;
+    encodeFunctionData(functionFragment: 'UPGRADE_INTERFACE_VERSION', values?: undefined): string;
+encodeFunctionData(functionFragment: 'addPlan', values: [BigNumberish, BigNumberish, BigNumberish]): string;
+encodeFunctionData(functionFragment: 'createStake', values: [BigNumberish, BigNumberish]): string;
+encodeFunctionData(functionFragment: 'depositRewards', values: [BigNumberish]): string;
 encodeFunctionData(functionFragment: 'getPlan', values: [BigNumberish]): string;
 encodeFunctionData(functionFragment: 'getStake', values: [BigNumberish]): string;
+encodeFunctionData(functionFragment: 'getStakeCountByUser', values: [AddressLike]): string;
+encodeFunctionData(functionFragment: 'getStakeIdsByUser', values: [AddressLike]): string;
 encodeFunctionData(functionFragment: 'getStakesByUser', values: [AddressLike]): string;
+encodeFunctionData(functionFragment: 'implementation', values?: undefined): string;
+encodeFunctionData(functionFragment: 'initialize', values: [AddressLike, AddressLike]): string;
 encodeFunctionData(functionFragment: 'owner', values?: undefined): string;
+encodeFunctionData(functionFragment: 'pause', values?: undefined): string;
+encodeFunctionData(functionFragment: 'paused', values?: undefined): string;
 encodeFunctionData(functionFragment: 'pendingReward', values: [BigNumberish]): string;
+encodeFunctionData(functionFragment: 'proxiableUUID', values?: undefined): string;
 encodeFunctionData(functionFragment: 'renounceOwnership', values?: undefined): string;
+encodeFunctionData(functionFragment: 'stakingToken', values?: undefined): string;
 encodeFunctionData(functionFragment: 'transferOwnership', values: [AddressLike]): string;
+encodeFunctionData(functionFragment: 'unpause', values?: undefined): string;
 encodeFunctionData(functionFragment: 'unstake', values: [BigNumberish]): string;
 encodeFunctionData(functionFragment: 'updatePlan', values: [BigNumberish, BigNumberish, BigNumberish, BigNumberish]): string;
+encodeFunctionData(functionFragment: 'upgradeToAndCall', values: [AddressLike, BytesLike]): string;
 
-    decodeFunctionResult(functionFragment: 'addPlan', data: BytesLike): Result;
-decodeFunctionResult(functionFragment: 'addToken', data: BytesLike): Result;
-decodeFunctionResult(functionFragment: 'claimReward', data: BytesLike): Result;
+    decodeFunctionResult(functionFragment: 'UPGRADE_INTERFACE_VERSION', data: BytesLike): Result;
+decodeFunctionResult(functionFragment: 'addPlan', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'createStake', data: BytesLike): Result;
-decodeFunctionResult(functionFragment: 'deletePlan', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'depositRewards', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'getPlan', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'getStake', data: BytesLike): Result;
+decodeFunctionResult(functionFragment: 'getStakeCountByUser', data: BytesLike): Result;
+decodeFunctionResult(functionFragment: 'getStakeIdsByUser', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'getStakesByUser', data: BytesLike): Result;
+decodeFunctionResult(functionFragment: 'implementation', data: BytesLike): Result;
+decodeFunctionResult(functionFragment: 'initialize', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'owner', data: BytesLike): Result;
+decodeFunctionResult(functionFragment: 'pause', data: BytesLike): Result;
+decodeFunctionResult(functionFragment: 'paused', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'pendingReward', data: BytesLike): Result;
+decodeFunctionResult(functionFragment: 'proxiableUUID', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'renounceOwnership', data: BytesLike): Result;
+decodeFunctionResult(functionFragment: 'stakingToken', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'transferOwnership', data: BytesLike): Result;
+decodeFunctionResult(functionFragment: 'unpause', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'unstake', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'updatePlan', data: BytesLike): Result;
+decodeFunctionResult(functionFragment: 'upgradeToAndCall', data: BytesLike): Result;
   }
 
   
+    export namespace InitializedEvent {
+      export type InputTuple = [version: BigNumberish];
+      export type OutputTuple = [version: bigint];
+      export interface OutputObject {version: bigint };
+      export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>
+      export type Filter = TypedDeferredTopicFilter<Event>
+      export type Log = TypedEventLog<Event>
+      export type LogDescription = TypedLogDescription<Event>
+    }
+
+  
+
     export namespace OwnershipTransferredEvent {
       export type InputTuple = [previousOwner: AddressLike, newOwner: AddressLike];
       export type OutputTuple = [previousOwner: string, newOwner: string];
       export interface OutputObject {previousOwner: string, newOwner: string };
+      export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>
+      export type Filter = TypedDeferredTopicFilter<Event>
+      export type Log = TypedEventLog<Event>
+      export type LogDescription = TypedLogDescription<Event>
+    }
+
+  
+
+    export namespace PausedEvent {
+      export type InputTuple = [account: AddressLike];
+      export type OutputTuple = [account: string];
+      export interface OutputObject {account: string };
       export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>
       export type Filter = TypedDeferredTopicFilter<Event>
       export type Log = TypedEventLog<Event>
@@ -80,18 +120,6 @@ decodeFunctionResult(functionFragment: 'updatePlan', data: BytesLike): Result;
 
   
 
-    export namespace PlanDeletedEvent {
-      export type InputTuple = [planId: BigNumberish];
-      export type OutputTuple = [planId: bigint];
-      export interface OutputObject {planId: bigint };
-      export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>
-      export type Filter = TypedDeferredTopicFilter<Event>
-      export type Log = TypedEventLog<Event>
-      export type LogDescription = TypedLogDescription<Event>
-    }
-
-  
-
     export namespace PlanUpdatedEvent {
       export type InputTuple = [planId: BigNumberish, period: BigNumberish, apr: BigNumberish, penalty: BigNumberish];
       export type OutputTuple = [planId: bigint, period: bigint, apr: bigint, penalty: bigint];
@@ -104,22 +132,10 @@ decodeFunctionResult(functionFragment: 'updatePlan', data: BytesLike): Result;
 
   
 
-    export namespace RewardClaimedEvent {
-      export type InputTuple = [stakeId: BigNumberish, staker: AddressLike, reward: BigNumberish];
-      export type OutputTuple = [stakeId: bigint, staker: string, reward: bigint];
-      export interface OutputObject {stakeId: bigint, staker: string, reward: bigint };
-      export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>
-      export type Filter = TypedDeferredTopicFilter<Event>
-      export type Log = TypedEventLog<Event>
-      export type LogDescription = TypedLogDescription<Event>
-    }
-
-  
-
     export namespace StakeCreatedEvent {
-      export type InputTuple = [stakeId: BigNumberish, staker: AddressLike, planId: BigNumberish, token: AddressLike, amount: BigNumberish];
-      export type OutputTuple = [stakeId: bigint, staker: string, planId: bigint, token: string, amount: bigint];
-      export interface OutputObject {stakeId: bigint, staker: string, planId: bigint, token: string, amount: bigint };
+      export type InputTuple = [stakeId: BigNumberish, staker: AddressLike, planId: BigNumberish, amount: BigNumberish, apr: BigNumberish, penalty: BigNumberish];
+      export type OutputTuple = [stakeId: bigint, staker: string, planId: bigint, amount: bigint, apr: bigint, penalty: bigint];
+      export interface OutputObject {stakeId: bigint, staker: string, planId: bigint, amount: bigint, apr: bigint, penalty: bigint };
       export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>
       export type Filter = TypedDeferredTopicFilter<Event>
       export type Log = TypedEventLog<Event>
@@ -128,10 +144,10 @@ decodeFunctionResult(functionFragment: 'updatePlan', data: BytesLike): Result;
 
   
 
-    export namespace TokenAddedEvent {
-      export type InputTuple = [token: AddressLike];
-      export type OutputTuple = [token: string];
-      export interface OutputObject {token: string };
+    export namespace UnpausedEvent {
+      export type InputTuple = [account: AddressLike];
+      export type OutputTuple = [account: string];
+      export interface OutputObject {account: string };
       export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>
       export type Filter = TypedDeferredTopicFilter<Event>
       export type Log = TypedEventLog<Event>
@@ -144,6 +160,18 @@ decodeFunctionResult(functionFragment: 'updatePlan', data: BytesLike): Result;
       export type InputTuple = [stakeId: BigNumberish, staker: AddressLike, amount: BigNumberish, reward: BigNumberish];
       export type OutputTuple = [stakeId: bigint, staker: string, amount: bigint, reward: bigint];
       export interface OutputObject {stakeId: bigint, staker: string, amount: bigint, reward: bigint };
+      export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>
+      export type Filter = TypedDeferredTopicFilter<Event>
+      export type Log = TypedEventLog<Event>
+      export type LogDescription = TypedLogDescription<Event>
+    }
+
+  
+
+    export namespace UpgradedEvent {
+      export type InputTuple = [implementation: AddressLike];
+      export type OutputTuple = [implementation: string];
+      export interface OutputObject {implementation: string };
       export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>
       export type Filter = TypedDeferredTopicFilter<Event>
       export type Log = TypedEventLog<Event>
@@ -186,6 +214,14 @@ decodeFunctionResult(functionFragment: 'updatePlan', data: BytesLike): Result;
 
     
     
+    UPGRADE_INTERFACE_VERSION: TypedContractMethod<
+      [],
+      [string],
+      'view'
+    >
+    
+
+    
     addPlan: TypedContractMethod<
       [_days: BigNumberish, _apr: BigNumberish, _penalty: BigNumberish, ],
       [void],
@@ -194,32 +230,8 @@ decodeFunctionResult(functionFragment: 'updatePlan', data: BytesLike): Result;
     
 
     
-    addToken: TypedContractMethod<
-      [_token: AddressLike, ],
-      [void],
-      'nonpayable'
-    >
-    
-
-    
-    claimReward: TypedContractMethod<
-      [_stakeId: BigNumberish, ],
-      [void],
-      'nonpayable'
-    >
-    
-
-    
     createStake: TypedContractMethod<
-      [_planId: BigNumberish, _token: AddressLike, _amount: BigNumberish, ],
-      [void],
-      'nonpayable'
-    >
-    
-
-    
-    deletePlan: TypedContractMethod<
-      [_planId: BigNumberish, ],
+      [_planId: BigNumberish, _amount: BigNumberish, ],
       [void],
       'nonpayable'
     >
@@ -227,7 +239,7 @@ decodeFunctionResult(functionFragment: 'updatePlan', data: BytesLike): Result;
 
     
     depositRewards: TypedContractMethod<
-      [_token: AddressLike, _amount: BigNumberish, ],
+      [_amount: BigNumberish, ],
       [void],
       'nonpayable'
     >
@@ -250,6 +262,22 @@ decodeFunctionResult(functionFragment: 'updatePlan', data: BytesLike): Result;
     
 
     
+    getStakeCountByUser: TypedContractMethod<
+      [_user: AddressLike, ],
+      [bigint],
+      'view'
+    >
+    
+
+    
+    getStakeIdsByUser: TypedContractMethod<
+      [_user: AddressLike, ],
+      [bigint[]],
+      'view'
+    >
+    
+
+    
     getStakesByUser: TypedContractMethod<
       [_user: AddressLike, ],
       [StakingContract.StakeStructOutput[]],
@@ -258,9 +286,41 @@ decodeFunctionResult(functionFragment: 'updatePlan', data: BytesLike): Result;
     
 
     
+    implementation: TypedContractMethod<
+      [],
+      [string],
+      'view'
+    >
+    
+
+    
+    initialize: TypedContractMethod<
+      [_stakingToken: AddressLike, initialOwner: AddressLike, ],
+      [void],
+      'nonpayable'
+    >
+    
+
+    
     owner: TypedContractMethod<
       [],
       [string],
+      'view'
+    >
+    
+
+    
+    pause: TypedContractMethod<
+      [],
+      [void],
+      'nonpayable'
+    >
+    
+
+    
+    paused: TypedContractMethod<
+      [],
+      [boolean],
       'view'
     >
     
@@ -274,6 +334,14 @@ decodeFunctionResult(functionFragment: 'updatePlan', data: BytesLike): Result;
     
 
     
+    proxiableUUID: TypedContractMethod<
+      [],
+      [string],
+      'view'
+    >
+    
+
+    
     renounceOwnership: TypedContractMethod<
       [],
       [void],
@@ -282,8 +350,24 @@ decodeFunctionResult(functionFragment: 'updatePlan', data: BytesLike): Result;
     
 
     
+    stakingToken: TypedContractMethod<
+      [],
+      [string],
+      'view'
+    >
+    
+
+    
     transferOwnership: TypedContractMethod<
       [newOwner: AddressLike, ],
+      [void],
+      'nonpayable'
+    >
+    
+
+    
+    unpause: TypedContractMethod<
+      [],
       [void],
       'nonpayable'
     >
@@ -305,36 +389,34 @@ decodeFunctionResult(functionFragment: 'updatePlan', data: BytesLike): Result;
     >
     
 
+    
+    upgradeToAndCall: TypedContractMethod<
+      [newImplementation: AddressLike, data: BytesLike, ],
+      [void],
+      'payable'
+    >
+    
+
 
     getFunction<T extends ContractMethod = ContractMethod>(key: string | FunctionFragment): T;
 
-    getFunction(nameOrSignature: 'addPlan'): TypedContractMethod<
+    getFunction(nameOrSignature: 'UPGRADE_INTERFACE_VERSION'): TypedContractMethod<
+      [],
+      [string],
+      'view'
+    >;
+getFunction(nameOrSignature: 'addPlan'): TypedContractMethod<
       [_days: BigNumberish, _apr: BigNumberish, _penalty: BigNumberish, ],
       [void],
       'nonpayable'
     >;
-getFunction(nameOrSignature: 'addToken'): TypedContractMethod<
-      [_token: AddressLike, ],
-      [void],
-      'nonpayable'
-    >;
-getFunction(nameOrSignature: 'claimReward'): TypedContractMethod<
-      [_stakeId: BigNumberish, ],
-      [void],
-      'nonpayable'
-    >;
 getFunction(nameOrSignature: 'createStake'): TypedContractMethod<
-      [_planId: BigNumberish, _token: AddressLike, _amount: BigNumberish, ],
-      [void],
-      'nonpayable'
-    >;
-getFunction(nameOrSignature: 'deletePlan'): TypedContractMethod<
-      [_planId: BigNumberish, ],
+      [_planId: BigNumberish, _amount: BigNumberish, ],
       [void],
       'nonpayable'
     >;
 getFunction(nameOrSignature: 'depositRewards'): TypedContractMethod<
-      [_token: AddressLike, _amount: BigNumberish, ],
+      [_amount: BigNumberish, ],
       [void],
       'nonpayable'
     >;
@@ -348,14 +430,44 @@ getFunction(nameOrSignature: 'getStake'): TypedContractMethod<
       [StakingContract.StakeStructOutput],
       'view'
     >;
+getFunction(nameOrSignature: 'getStakeCountByUser'): TypedContractMethod<
+      [_user: AddressLike, ],
+      [bigint],
+      'view'
+    >;
+getFunction(nameOrSignature: 'getStakeIdsByUser'): TypedContractMethod<
+      [_user: AddressLike, ],
+      [bigint[]],
+      'view'
+    >;
 getFunction(nameOrSignature: 'getStakesByUser'): TypedContractMethod<
       [_user: AddressLike, ],
       [StakingContract.StakeStructOutput[]],
       'view'
     >;
+getFunction(nameOrSignature: 'implementation'): TypedContractMethod<
+      [],
+      [string],
+      'view'
+    >;
+getFunction(nameOrSignature: 'initialize'): TypedContractMethod<
+      [_stakingToken: AddressLike, initialOwner: AddressLike, ],
+      [void],
+      'nonpayable'
+    >;
 getFunction(nameOrSignature: 'owner'): TypedContractMethod<
       [],
       [string],
+      'view'
+    >;
+getFunction(nameOrSignature: 'pause'): TypedContractMethod<
+      [],
+      [void],
+      'nonpayable'
+    >;
+getFunction(nameOrSignature: 'paused'): TypedContractMethod<
+      [],
+      [boolean],
       'view'
     >;
 getFunction(nameOrSignature: 'pendingReward'): TypedContractMethod<
@@ -363,13 +475,28 @@ getFunction(nameOrSignature: 'pendingReward'): TypedContractMethod<
       [bigint],
       'view'
     >;
+getFunction(nameOrSignature: 'proxiableUUID'): TypedContractMethod<
+      [],
+      [string],
+      'view'
+    >;
 getFunction(nameOrSignature: 'renounceOwnership'): TypedContractMethod<
       [],
       [void],
       'nonpayable'
     >;
+getFunction(nameOrSignature: 'stakingToken'): TypedContractMethod<
+      [],
+      [string],
+      'view'
+    >;
 getFunction(nameOrSignature: 'transferOwnership'): TypedContractMethod<
       [newOwner: AddressLike, ],
+      [void],
+      'nonpayable'
+    >;
+getFunction(nameOrSignature: 'unpause'): TypedContractMethod<
+      [],
       [void],
       'nonpayable'
     >;
@@ -383,48 +510,58 @@ getFunction(nameOrSignature: 'updatePlan'): TypedContractMethod<
       [void],
       'nonpayable'
     >;
+getFunction(nameOrSignature: 'upgradeToAndCall'): TypedContractMethod<
+      [newImplementation: AddressLike, data: BytesLike, ],
+      [void],
+      'payable'
+    >;
 
-    getEvent(key: 'OwnershipTransferred'): TypedContractEvent<OwnershipTransferredEvent.InputTuple, OwnershipTransferredEvent.OutputTuple, OwnershipTransferredEvent.OutputObject>;
+    getEvent(key: 'Initialized'): TypedContractEvent<InitializedEvent.InputTuple, InitializedEvent.OutputTuple, InitializedEvent.OutputObject>;
+getEvent(key: 'OwnershipTransferred'): TypedContractEvent<OwnershipTransferredEvent.InputTuple, OwnershipTransferredEvent.OutputTuple, OwnershipTransferredEvent.OutputObject>;
+getEvent(key: 'Paused'): TypedContractEvent<PausedEvent.InputTuple, PausedEvent.OutputTuple, PausedEvent.OutputObject>;
 getEvent(key: 'PlanAdded'): TypedContractEvent<PlanAddedEvent.InputTuple, PlanAddedEvent.OutputTuple, PlanAddedEvent.OutputObject>;
-getEvent(key: 'PlanDeleted'): TypedContractEvent<PlanDeletedEvent.InputTuple, PlanDeletedEvent.OutputTuple, PlanDeletedEvent.OutputObject>;
 getEvent(key: 'PlanUpdated'): TypedContractEvent<PlanUpdatedEvent.InputTuple, PlanUpdatedEvent.OutputTuple, PlanUpdatedEvent.OutputObject>;
-getEvent(key: 'RewardClaimed'): TypedContractEvent<RewardClaimedEvent.InputTuple, RewardClaimedEvent.OutputTuple, RewardClaimedEvent.OutputObject>;
 getEvent(key: 'StakeCreated'): TypedContractEvent<StakeCreatedEvent.InputTuple, StakeCreatedEvent.OutputTuple, StakeCreatedEvent.OutputObject>;
-getEvent(key: 'TokenAdded'): TypedContractEvent<TokenAddedEvent.InputTuple, TokenAddedEvent.OutputTuple, TokenAddedEvent.OutputObject>;
+getEvent(key: 'Unpaused'): TypedContractEvent<UnpausedEvent.InputTuple, UnpausedEvent.OutputTuple, UnpausedEvent.OutputObject>;
 getEvent(key: 'Unstaked'): TypedContractEvent<UnstakedEvent.InputTuple, UnstakedEvent.OutputTuple, UnstakedEvent.OutputObject>;
+getEvent(key: 'Upgraded'): TypedContractEvent<UpgradedEvent.InputTuple, UpgradedEvent.OutputTuple, UpgradedEvent.OutputObject>;
 
     filters: {
       
+      'Initialized(uint64)': TypedContractEvent<InitializedEvent.InputTuple, InitializedEvent.OutputTuple, InitializedEvent.OutputObject>;
+      Initialized: TypedContractEvent<InitializedEvent.InputTuple, InitializedEvent.OutputTuple, InitializedEvent.OutputObject>;
+    
+
       'OwnershipTransferred(address,address)': TypedContractEvent<OwnershipTransferredEvent.InputTuple, OwnershipTransferredEvent.OutputTuple, OwnershipTransferredEvent.OutputObject>;
       OwnershipTransferred: TypedContractEvent<OwnershipTransferredEvent.InputTuple, OwnershipTransferredEvent.OutputTuple, OwnershipTransferredEvent.OutputObject>;
+    
+
+      'Paused(address)': TypedContractEvent<PausedEvent.InputTuple, PausedEvent.OutputTuple, PausedEvent.OutputObject>;
+      Paused: TypedContractEvent<PausedEvent.InputTuple, PausedEvent.OutputTuple, PausedEvent.OutputObject>;
     
 
       'PlanAdded(uint256,uint256,uint256,uint256)': TypedContractEvent<PlanAddedEvent.InputTuple, PlanAddedEvent.OutputTuple, PlanAddedEvent.OutputObject>;
       PlanAdded: TypedContractEvent<PlanAddedEvent.InputTuple, PlanAddedEvent.OutputTuple, PlanAddedEvent.OutputObject>;
     
 
-      'PlanDeleted(uint256)': TypedContractEvent<PlanDeletedEvent.InputTuple, PlanDeletedEvent.OutputTuple, PlanDeletedEvent.OutputObject>;
-      PlanDeleted: TypedContractEvent<PlanDeletedEvent.InputTuple, PlanDeletedEvent.OutputTuple, PlanDeletedEvent.OutputObject>;
-    
-
       'PlanUpdated(uint256,uint256,uint256,uint256)': TypedContractEvent<PlanUpdatedEvent.InputTuple, PlanUpdatedEvent.OutputTuple, PlanUpdatedEvent.OutputObject>;
       PlanUpdated: TypedContractEvent<PlanUpdatedEvent.InputTuple, PlanUpdatedEvent.OutputTuple, PlanUpdatedEvent.OutputObject>;
     
 
-      'RewardClaimed(uint256,address,uint256)': TypedContractEvent<RewardClaimedEvent.InputTuple, RewardClaimedEvent.OutputTuple, RewardClaimedEvent.OutputObject>;
-      RewardClaimed: TypedContractEvent<RewardClaimedEvent.InputTuple, RewardClaimedEvent.OutputTuple, RewardClaimedEvent.OutputObject>;
-    
-
-      'StakeCreated(uint256,address,uint256,address,uint256)': TypedContractEvent<StakeCreatedEvent.InputTuple, StakeCreatedEvent.OutputTuple, StakeCreatedEvent.OutputObject>;
+      'StakeCreated(uint256,address,uint256,uint256,uint256,uint256)': TypedContractEvent<StakeCreatedEvent.InputTuple, StakeCreatedEvent.OutputTuple, StakeCreatedEvent.OutputObject>;
       StakeCreated: TypedContractEvent<StakeCreatedEvent.InputTuple, StakeCreatedEvent.OutputTuple, StakeCreatedEvent.OutputObject>;
     
 
-      'TokenAdded(address)': TypedContractEvent<TokenAddedEvent.InputTuple, TokenAddedEvent.OutputTuple, TokenAddedEvent.OutputObject>;
-      TokenAdded: TypedContractEvent<TokenAddedEvent.InputTuple, TokenAddedEvent.OutputTuple, TokenAddedEvent.OutputObject>;
+      'Unpaused(address)': TypedContractEvent<UnpausedEvent.InputTuple, UnpausedEvent.OutputTuple, UnpausedEvent.OutputObject>;
+      Unpaused: TypedContractEvent<UnpausedEvent.InputTuple, UnpausedEvent.OutputTuple, UnpausedEvent.OutputObject>;
     
 
       'Unstaked(uint256,address,uint256,uint256)': TypedContractEvent<UnstakedEvent.InputTuple, UnstakedEvent.OutputTuple, UnstakedEvent.OutputObject>;
       Unstaked: TypedContractEvent<UnstakedEvent.InputTuple, UnstakedEvent.OutputTuple, UnstakedEvent.OutputObject>;
+    
+
+      'Upgraded(address)': TypedContractEvent<UpgradedEvent.InputTuple, UpgradedEvent.OutputTuple, UpgradedEvent.OutputObject>;
+      Upgraded: TypedContractEvent<UpgradedEvent.InputTuple, UpgradedEvent.OutputTuple, UpgradedEvent.OutputObject>;
     
     };
   }

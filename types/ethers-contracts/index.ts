@@ -3,8 +3,12 @@
 /* eslint-disable */
 import type * as mocks from './mocks/index.js';
 export type { mocks };
+import type * as proxy from './proxy/index.js';
+export type { proxy };
 export type { StakingContract } from './StakingContract.js';
 export * as factories from './factories/index.js';
 export type { MockERC20 } from './mocks/MockERC20.js';
 export { MockERC20__factory } from './factories/mocks/MockERC20__factory.js';
+export type { StakingERC1967Proxy } from './proxy/StakingERC1967Proxy.js';
+export { StakingERC1967Proxy__factory } from './factories/proxy/StakingERC1967Proxy__factory.js';
 export { StakingContract__factory } from './factories/StakingContract__factory.js';
