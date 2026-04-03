@@ -99,7 +99,7 @@ contract StakingContract is OwnableUpgradeable, PausableUpgradeable, UUPSUpgrade
         emit PlanUpdated(_planId, _days * 1 days, _apr, _penalty);
     }
 
-    function depositRewards(uint _amount) external onlyOwner whenNotPaused{
+    function depositRewards(uint _amount) external onlyOwner whenPaused{
         require(_amount > 0, "Amount must be > 0");
         stakingToken.safeTransferFrom(msg.sender, address(this), _amount);
     }
