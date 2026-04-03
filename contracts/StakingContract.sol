@@ -77,7 +77,7 @@ contract StakingContract is OwnableUpgradeable, PausableUpgradeable, UUPSUpgrade
         _unpause();
     }
 
-    function addPlan(uint _days, uint _apr, uint _penalty) external onlyOwner {
+    function addPlan(uint _days, uint _apr, uint _penalty) external whenPaused onlyOwner {
         require(_days > 0, "Period must be > 0");
         require(_apr > 0, "APR must be > 0");
         require(_penalty <= 100, "Penalty cannot exceed 100");
