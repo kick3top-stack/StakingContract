@@ -144,7 +144,7 @@ npx hardhat run scripts/verify.js --network sepolia
 
 The script reads proxy and implementation addresses from `deployments/sepolia.json` automatically — no copy-pasting needed. It verifies both contracts and prints the Etherscan link.
 
-###Verify URLs(Sepolia testnet)
+### Verify URLs(Sepolia testnet)
 
 - StakingContract.sol   https://sepolia.etherscan.io/address/0x1A14477D67bFdD5a7CcB46b8433A7Ce495276e43#code
 - Proxy https://sepolia.etherscan.io/address/0x08c4390bf06080E8775Ed2c5fb5C4E36a465435C#code
