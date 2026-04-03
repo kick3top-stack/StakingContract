@@ -1,4 +1,6 @@
 import { network } from "hardhat";
+import fs from "fs";
+import path from "path";
 
 function envBool(name) {
   const v = process.env[name];
@@ -55,6 +57,24 @@ const staking = ImplFactory.attach(proxyAddr);
 console.log("StakingContract proxy (use this address):", proxyAddr);
 console.log("Staking token:", tokenAddr);
 console.log("Owner (Ownable / upgrades / pause):", ownerAddr);
+
+// Save deployment info to deployments/<network>.json
+const networkName = process.env.HARDHAT_NETWORK ?? "unknown";
+const deploymentsDir = path.resolve("deployments");
+if (!fs.existsSync(deploymentsDir)) fs.mkdirSync(deploymentsDir);
+const deploymentFile = path.join(deploymentsDir, `${networkName}.json`);
+const deploymentData = {
+  network: networkName,
+  chainId: chainId.toString(),
+  deployedAt: new Date().toISOString(),
+  deployer: deployer.address,
+  proxy: proxyAddr,
+  implementation: implAddr,
+  stakingToken: tokenAddr,
+  owner: ownerAddr,
+};
+fs.writeFileSync(deploymentFile, JSON.stringify(deploymentData, null, 2));
+console.log(`Deployment saved to ${deploymentFile}`);
 
 if (envBool("SETUP_EXAMPLE_PLANS")) {
   if (ownerAddr.toLowerCase() !== deployer.address.toLowerCase()) {

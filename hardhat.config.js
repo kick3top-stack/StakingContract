@@ -1,5 +1,5 @@
 import hardhatToolboxMochaEthersPlugin from "@nomicfoundation/hardhat-toolbox-mocha-ethers";
-import { defineConfig } from "hardhat/config";
+import { configVariable, defineConfig } from "hardhat/config";
 
 const sepoliaRpc = process.env.SEPOLIA_RPC_URL;
 const sepoliaKey = process.env.SEPOLIA_PRIVATE_KEY;
@@ -38,5 +38,10 @@ export default defineConfig({
           },
         }
       : {}),
+  },
+  verify: {
+    etherscan: {
+      apiKey: configVariable("ETHERSCAN_API_KEY"),
+    },
   },
 });
