@@ -131,6 +131,11 @@ approve(<proxyAddress>, amount)   # on the token contract
 depositRewards(amount)            # on the proxy
 ```
 
+### Sepolia testnet Deployment
+- Mocktoken: 0x7D72143Ee6A6bb2E710e1Aa3CE19fcFBA3423220
+- StakingContract: 0x1A14477D67bFdD5a7CcB46b8433A7Ce495276e43
+- Proxy: 0x08c4390bf06080E8775Ed2c5fb5C4E36a465435C
+
 ## Verify on Etherscan
 
 Requires an [Etherscan API key](https://etherscan.io/myapikey) and a completed deploy (so `deployments/<network>.json` exists).

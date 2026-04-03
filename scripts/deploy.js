@@ -25,10 +25,12 @@ if (isMainnet && envBool("DEPLOY_MOCK_TOKEN")) {
 }
 
 let tokenAddr = process.env.STAKING_TOKEN?.trim();
+let mockTokenAddr = null;
 if (!tokenAddr && envBool("DEPLOY_MOCK_TOKEN")) {
   const mock = await ethers.deployContract("MockERC20", deployer);
   await mock.waitForDeployment();
-  tokenAddr = await mock.getAddress();
+  mockTokenAddr = await mock.getAddress();
+  tokenAddr = mockTokenAddr;
   console.log("MockERC20 (test token):", tokenAddr);
 }
 
@@ -71,6 +73,7 @@ const deploymentData = {
   proxy: proxyAddr,
   implementation: implAddr,
   stakingToken: tokenAddr,
+  mockToken: mockTokenAddr,   // null if a real token was used
   owner: ownerAddr,
 };
 fs.writeFileSync(deploymentFile, JSON.stringify(deploymentData, null, 2));
