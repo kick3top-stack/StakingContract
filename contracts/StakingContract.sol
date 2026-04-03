@@ -73,7 +73,7 @@ contract StakingContract is OwnableUpgradeable, PausableUpgradeable, UUPSUpgrade
         _pause();
     }
 
-    function unpause() external onlyOwner {
+    function unpause() external onlyOwner whenPaused {
         _unpause();
     }
 
@@ -87,7 +87,7 @@ contract StakingContract is OwnableUpgradeable, PausableUpgradeable, UUPSUpgrade
     }
 
     /// @notice Updates the plan template for *new* stakes only.
-    function updatePlan(uint _planId, uint _days, uint _apr, uint _penalty) external onlyOwner {
+    function updatePlan(uint _planId, uint _days, uint _apr, uint _penalty) external whenPaused onlyOwner {
         require(_planId < _nextPlanId, "Plan not found");
         require(_days > 0, "Period must be > 0");
         require(_apr > 0, "APR must be > 0");
@@ -99,7 +99,7 @@ contract StakingContract is OwnableUpgradeable, PausableUpgradeable, UUPSUpgrade
         emit PlanUpdated(_planId, _days * 1 days, _apr, _penalty);
     }
 
-    function depositRewards(uint _amount) external onlyOwner {
+    function depositRewards(uint _amount) external onlyOwner whenNotPaused{
         require(_amount > 0, "Amount must be > 0");
         stakingToken.safeTransferFrom(msg.sender, address(this), _amount);
     }
@@ -109,11 +109,6 @@ contract StakingContract is OwnableUpgradeable, PausableUpgradeable, UUPSUpgrade
         require(_amount > 0, "Amount must be > 0");
 
         Plan memory plan = _plans[_planId];
-        uint maxReward = _amount * plan.apr * plan.period / (100 * YEAR);
-        require(
-            stakingToken.balanceOf(address(this)) >= maxReward,
-            "Insufficient reward reserves"
-        );
         stakingToken.safeTransferFrom(msg.sender, address(this), _amount);
 
         uint stakeId = _nextStakeId++;

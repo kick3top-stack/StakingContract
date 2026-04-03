@@ -27,7 +27,7 @@ Multi-plan ERC20 staking: each stake is a separate **position** with its own loc
 
 **Reentrancy**: OpenZeppelin **`ReentrancyGuard`** (`nonReentrant` on `createStake` / `unstake`). Uses a dedicated EIP-7201 storage slot — safe through an ERC-1967 proxy on OZ v5+.
 
-**Reward liquidity**: The contract does not mint rewards. The owner must `depositRewards(amount)` (after `approve` to the **proxy** address). `createStake` checks that the contract holds at least the maximum possible reward for the new position before accepting it — if reserves are insufficient the transaction reverts with `"Insufficient reward reserves"`.
+**Reward liquidity**: The contract does not mint rewards. The owner must `depositRewards(amount)` (after `approve` to the **proxy** address). It is the owner's responsibility to keep reserves funded — if the contract cannot cover a reward at `unstake` time the transaction will revert.
 
 **Upgrades (UUPS)**: Owner calls `upgradeToAndCall(newImplementation, data)` on the **proxy**. New implementations must preserve storage layout (append-only).
 
@@ -55,7 +55,7 @@ When a user calls `createStake`, the contract copies the plan's `apr`, `penalty`
 ## Key assumptions
 
 1. **Decimals**: APR is applied to raw `amount` units — consistent with your token's decimals.
-2. **Solvency**: `createStake` checks that current contract balance covers the new position's maximum reward. It does **not** account for rewards already owed to existing stakers, so keep reserves well-funded.
+2. **Solvency**: There is no on-chain check that reserves cover pending rewards. Keep the contract well-funded — if balance runs dry, `unstake` will revert when trying to pay rewards.
 3. **Plan changes**: `updatePlan` affects **new** stakes only. Lock length for an existing position is fixed at `endTime`.
 
 ## Prerequisites

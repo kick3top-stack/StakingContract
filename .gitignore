@@ -4,3 +4,4 @@ artifacts
 .env
 .env.*
 deployments
+types

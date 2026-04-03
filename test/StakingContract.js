@@ -343,17 +343,6 @@ describe("StakingContract (UUPS proxy)", function () {
       await expect(staking.connect(alice).createStake(0n, 0n)).to.be.revertedWith("Amount must be > 0");
     });
 
-    it("reverts when reward reserves are insufficient", async function () {
-      const { staking, owner, alice, token, stakingAddr } = await networkHelpers.loadFixture(deployFixtureBare);
-      await staking.connect(owner).addPlan(30, 10, 0);
-      await token.mint(alice, ethers.parseEther("1000"));
-      await token.connect(alice).approve(stakingAddr, ethers.MaxUint256);
-      // no depositRewards — contract balance is zero
-      await expect(
-        staking.connect(alice).createStake(0n, ethers.parseEther("1000")),
-      ).to.be.revertedWith("Insufficient reward reserves");
-    });
-
     it("reverts when user has insufficient token balance", async function () {
       const { staking, alice, token, stakingAddr } = await networkHelpers.loadFixture(deployFixtureBare);
       const [owner] = await ethers.getSigners();
