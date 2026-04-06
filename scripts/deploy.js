@@ -61,7 +61,8 @@ console.log("Staking token:", tokenAddr);
 console.log("Owner (Ownable / upgrades / pause):", ownerAddr);
 
 // Save deployment info to deployments/<network>.json
-const networkName = process.env.HARDHAT_NETWORK ?? "unknown";
+const chainNetworkMap = { 1n: "mainnet", 11155111n: "sepolia", 31337n: "localhost" };
+const networkName = chainNetworkMap[chainId] ?? process.env.HARDHAT_NETWORK ?? `chain-${chainId}`;
 const deploymentsDir = path.resolve("deployments");
 if (!fs.existsSync(deploymentsDir)) fs.mkdirSync(deploymentsDir);
 const deploymentFile = path.join(deploymentsDir, `${networkName}.json`);

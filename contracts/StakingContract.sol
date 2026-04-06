@@ -45,6 +45,11 @@ contract StakingContract is OwnableUpgradeable, PausableUpgradeable, UUPSUpgrade
 
     mapping(address => uint[]) private _stakesByUser;
 
+    uint public totalStaked;      // sum of all active stake amounts
+    uint public totalStakers;     // unique addresses that have ever staked
+    uint public rewardPool;       // tokens deposited via depositRewards
+    mapping(address => bool) private _hasStaked;
+
     event PlanAdded(uint indexed planId, uint period, uint apr, uint penalty);
     event PlanUpdated(uint indexed planId, uint period, uint apr, uint penalty);
     event StakeCreated(
@@ -99,9 +104,10 @@ contract StakingContract is OwnableUpgradeable, PausableUpgradeable, UUPSUpgrade
         emit PlanUpdated(_planId, _days * 1 days, _apr, _penalty);
     }
 
-    function depositRewards(uint _amount) external onlyOwner whenPaused{
+    function depositRewards(uint _amount) external onlyOwner whenPaused {
         require(_amount > 0, "Amount must be > 0");
         stakingToken.safeTransferFrom(msg.sender, address(this), _amount);
+        rewardPool += _amount;
     }
 
     function createStake(uint _planId, uint _amount) external whenNotPaused nonReentrant {
@@ -123,6 +129,11 @@ contract StakingContract is OwnableUpgradeable, PausableUpgradeable, UUPSUpgrade
             staker: msg.sender
         });
         _stakesByUser[msg.sender].push(stakeId);
+        totalStaked += _amount;
+        if (!_hasStaked[msg.sender]) {
+            _hasStaked[msg.sender] = true;
+            totalStakers++;
+        }
 
         emit StakeCreated(stakeId, msg.sender, _planId, _amount, plan.apr, plan.penalty);
     }
@@ -146,9 +157,17 @@ contract StakingContract is OwnableUpgradeable, PausableUpgradeable, UUPSUpgrade
         _removeUserStake(msg.sender, _stakeId);
         delete _stakes[_stakeId];
 
+        totalStaked -= principal;
+        rewardPool -= reward;
+
         stakingToken.safeTransfer(msg.sender, principal);
         if (reward != 0) {
             stakingToken.safeTransfer(msg.sender, reward);
+        }
+
+        if (_stakesByUser[msg.sender].length == 0) {
+            totalStakers--;
+            _hasStaked[msg.sender] = false;
         }
 
         emit Unstaked(_stakeId, msg.sender, principal, reward);
@@ -222,5 +241,20 @@ contract StakingContract is OwnableUpgradeable, PausableUpgradeable, UUPSUpgrade
             return rawReward * (100 - s.penalty) / 100;
         }
         return rawReward;
+    }
+
+    /// @notice Total tokens currently locked across all active stakes.
+    function getTotalStaked() external view returns (uint) {
+        return totalStaked;
+    }
+
+    /// @notice Current number of addresses with at least one active stake.
+    function getTotalStakers() external view returns (uint) {
+        return totalStakers;
+    }
+
+    /// @notice Reward tokens available to pay out (deposited minus paid).
+    function getRewardPool() external view returns (uint) {
+        return rewardPool;
     }
 }

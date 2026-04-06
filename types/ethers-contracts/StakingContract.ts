@@ -18,7 +18,7 @@ export declare namespace StakingContract {
     }
 
   export interface StakingContractInterface extends Interface {
-    getFunction(nameOrSignature: "UPGRADE_INTERFACE_VERSION" | "addPlan" | "createStake" | "depositRewards" | "getPlan" | "getStake" | "getStakeCountByUser" | "getStakeIdsByUser" | "getStakesByUser" | "implementation" | "initialize" | "owner" | "pause" | "paused" | "pendingReward" | "proxiableUUID" | "renounceOwnership" | "stakingToken" | "transferOwnership" | "unpause" | "unstake" | "updatePlan" | "upgradeToAndCall"): FunctionFragment;
+    getFunction(nameOrSignature: "UPGRADE_INTERFACE_VERSION" | "addPlan" | "createStake" | "depositRewards" | "getPlan" | "getRewardPool" | "getStake" | "getStakeCountByUser" | "getStakeIdsByUser" | "getStakesByUser" | "getTotalStaked" | "getTotalStakers" | "implementation" | "initialize" | "owner" | "pause" | "paused" | "pendingReward" | "proxiableUUID" | "renounceOwnership" | "rewardPool" | "stakingToken" | "totalStaked" | "totalStakers" | "transferOwnership" | "unpause" | "unstake" | "updatePlan" | "upgradeToAndCall"): FunctionFragment;
 
     getEvent(nameOrSignatureOrTopic: "Initialized" | "OwnershipTransferred" | "Paused" | "PlanAdded" | "PlanUpdated" | "StakeCreated" | "Unpaused" | "Unstaked" | "Upgraded"): EventFragment;
 
@@ -27,10 +27,13 @@ encodeFunctionData(functionFragment: 'addPlan', values: [BigNumberish, BigNumber
 encodeFunctionData(functionFragment: 'createStake', values: [BigNumberish, BigNumberish]): string;
 encodeFunctionData(functionFragment: 'depositRewards', values: [BigNumberish]): string;
 encodeFunctionData(functionFragment: 'getPlan', values: [BigNumberish]): string;
+encodeFunctionData(functionFragment: 'getRewardPool', values?: undefined): string;
 encodeFunctionData(functionFragment: 'getStake', values: [BigNumberish]): string;
 encodeFunctionData(functionFragment: 'getStakeCountByUser', values: [AddressLike]): string;
 encodeFunctionData(functionFragment: 'getStakeIdsByUser', values: [AddressLike]): string;
 encodeFunctionData(functionFragment: 'getStakesByUser', values: [AddressLike]): string;
+encodeFunctionData(functionFragment: 'getTotalStaked', values?: undefined): string;
+encodeFunctionData(functionFragment: 'getTotalStakers', values?: undefined): string;
 encodeFunctionData(functionFragment: 'implementation', values?: undefined): string;
 encodeFunctionData(functionFragment: 'initialize', values: [AddressLike, AddressLike]): string;
 encodeFunctionData(functionFragment: 'owner', values?: undefined): string;
@@ -39,7 +42,10 @@ encodeFunctionData(functionFragment: 'paused', values?: undefined): string;
 encodeFunctionData(functionFragment: 'pendingReward', values: [BigNumberish]): string;
 encodeFunctionData(functionFragment: 'proxiableUUID', values?: undefined): string;
 encodeFunctionData(functionFragment: 'renounceOwnership', values?: undefined): string;
+encodeFunctionData(functionFragment: 'rewardPool', values?: undefined): string;
 encodeFunctionData(functionFragment: 'stakingToken', values?: undefined): string;
+encodeFunctionData(functionFragment: 'totalStaked', values?: undefined): string;
+encodeFunctionData(functionFragment: 'totalStakers', values?: undefined): string;
 encodeFunctionData(functionFragment: 'transferOwnership', values: [AddressLike]): string;
 encodeFunctionData(functionFragment: 'unpause', values?: undefined): string;
 encodeFunctionData(functionFragment: 'unstake', values: [BigNumberish]): string;
@@ -51,10 +57,13 @@ decodeFunctionResult(functionFragment: 'addPlan', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'createStake', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'depositRewards', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'getPlan', data: BytesLike): Result;
+decodeFunctionResult(functionFragment: 'getRewardPool', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'getStake', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'getStakeCountByUser', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'getStakeIdsByUser', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'getStakesByUser', data: BytesLike): Result;
+decodeFunctionResult(functionFragment: 'getTotalStaked', data: BytesLike): Result;
+decodeFunctionResult(functionFragment: 'getTotalStakers', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'implementation', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'initialize', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'owner', data: BytesLike): Result;
@@ -63,7 +72,10 @@ decodeFunctionResult(functionFragment: 'paused', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'pendingReward', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'proxiableUUID', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'renounceOwnership', data: BytesLike): Result;
+decodeFunctionResult(functionFragment: 'rewardPool', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'stakingToken', data: BytesLike): Result;
+decodeFunctionResult(functionFragment: 'totalStaked', data: BytesLike): Result;
+decodeFunctionResult(functionFragment: 'totalStakers', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'transferOwnership', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'unpause', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'unstake', data: BytesLike): Result;
@@ -254,6 +266,14 @@ decodeFunctionResult(functionFragment: 'upgradeToAndCall', data: BytesLike): Res
     
 
     
+    getRewardPool: TypedContractMethod<
+      [],
+      [bigint],
+      'view'
+    >
+    
+
+    
     getStake: TypedContractMethod<
       [_stakeId: BigNumberish, ],
       [StakingContract.StakeStructOutput],
@@ -281,6 +301,22 @@ decodeFunctionResult(functionFragment: 'upgradeToAndCall', data: BytesLike): Res
     getStakesByUser: TypedContractMethod<
       [_user: AddressLike, ],
       [StakingContract.StakeStructOutput[]],
+      'view'
+    >
+    
+
+    
+    getTotalStaked: TypedContractMethod<
+      [],
+      [bigint],
+      'view'
+    >
+    
+
+    
+    getTotalStakers: TypedContractMethod<
+      [],
+      [bigint],
       'view'
     >
     
@@ -350,9 +386,33 @@ decodeFunctionResult(functionFragment: 'upgradeToAndCall', data: BytesLike): Res
     
 
     
+    rewardPool: TypedContractMethod<
+      [],
+      [bigint],
+      'view'
+    >
+    
+
+    
     stakingToken: TypedContractMethod<
       [],
       [string],
+      'view'
+    >
+    
+
+    
+    totalStaked: TypedContractMethod<
+      [],
+      [bigint],
+      'view'
+    >
+    
+
+    
+    totalStakers: TypedContractMethod<
+      [],
+      [bigint],
       'view'
     >
     
@@ -425,6 +485,11 @@ getFunction(nameOrSignature: 'getPlan'): TypedContractMethod<
       [StakingContract.PlanStructOutput],
       'view'
     >;
+getFunction(nameOrSignature: 'getRewardPool'): TypedContractMethod<
+      [],
+      [bigint],
+      'view'
+    >;
 getFunction(nameOrSignature: 'getStake'): TypedContractMethod<
       [_stakeId: BigNumberish, ],
       [StakingContract.StakeStructOutput],
@@ -443,6 +508,16 @@ getFunction(nameOrSignature: 'getStakeIdsByUser'): TypedContractMethod<
 getFunction(nameOrSignature: 'getStakesByUser'): TypedContractMethod<
       [_user: AddressLike, ],
       [StakingContract.StakeStructOutput[]],
+      'view'
+    >;
+getFunction(nameOrSignature: 'getTotalStaked'): TypedContractMethod<
+      [],
+      [bigint],
+      'view'
+    >;
+getFunction(nameOrSignature: 'getTotalStakers'): TypedContractMethod<
+      [],
+      [bigint],
       'view'
     >;
 getFunction(nameOrSignature: 'implementation'): TypedContractMethod<
@@ -485,9 +560,24 @@ getFunction(nameOrSignature: 'renounceOwnership'): TypedContractMethod<
       [void],
       'nonpayable'
     >;
+getFunction(nameOrSignature: 'rewardPool'): TypedContractMethod<
+      [],
+      [bigint],
+      'view'
+    >;
 getFunction(nameOrSignature: 'stakingToken'): TypedContractMethod<
       [],
       [string],
+      'view'
+    >;
+getFunction(nameOrSignature: 'totalStaked'): TypedContractMethod<
+      [],
+      [bigint],
+      'view'
+    >;
+getFunction(nameOrSignature: 'totalStakers'): TypedContractMethod<
+      [],
+      [bigint],
       'view'
     >;
 getFunction(nameOrSignature: 'transferOwnership'): TypedContractMethod<

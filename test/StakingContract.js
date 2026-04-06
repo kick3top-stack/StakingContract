@@ -35,11 +35,13 @@ async function deployFixture() {
   const { staking, impl, proxy } = await deployStakingProxy(tokenAddr, owner);
   const stakingAddr = await staking.getAddress();
 
+  await staking.connect(owner).pause();
   await staking.connect(owner).addPlan(30, 10, 50);
 
   await token.mint(owner, ethers.parseEther("100000"));
   await token.connect(owner).approve(stakingAddr, ethers.MaxUint256);
   await staking.connect(owner).depositRewards(ethers.parseEther("50000"));
+  await staking.connect(owner).unpause();
 
   await token.mint(alice, ethers.parseEther("10000"));
   await token.connect(alice).approve(stakingAddr, ethers.MaxUint256);
@@ -57,6 +59,13 @@ async function deployFixtureBare() {
   const { staking, impl, proxy } = await deployStakingProxy(tokenAddr, owner);
   const stakingAddr = await staking.getAddress();
   return { owner, alice, bob, token, staking, impl, proxy, tokenAddr, stakingAddr };
+}
+
+/** Helper: pause → run fn → unpause */
+async function whilePaused(staking, owner, fn) {
+  await staking.connect(owner).pause();
+  await fn();
+  await staking.connect(owner).unpause();
 }
 
 describe("StakingContract (UUPS proxy)", function () {
@@ -115,7 +124,8 @@ describe("StakingContract (UUPS proxy)", function () {
   // ---------------------------------------------------------------------------
   describe("Plans (addPlan / updatePlan)", function () {
     it("reverts addPlan when non-owner", async function () {
-      const { staking, alice } = await networkHelpers.loadFixture(deployFixtureBare);
+      const { staking, owner, alice } = await networkHelpers.loadFixture(deployFixtureBare);
+      await staking.connect(owner).pause();
       await expect(staking.connect(alice).addPlan(1, 1, 0)).to.be.revertedWithCustomError(
         staking,
         "OwnableUnauthorizedAccount",
@@ -124,16 +134,19 @@ describe("StakingContract (UUPS proxy)", function () {
 
     it("reverts addPlan when period is zero", async function () {
       const { staking, owner } = await networkHelpers.loadFixture(deployFixtureBare);
+      await staking.connect(owner).pause();
       await expect(staking.connect(owner).addPlan(0, 10, 0)).to.be.revertedWith("Period must be > 0");
     });
 
     it("reverts addPlan when APR is zero", async function () {
       const { staking, owner } = await networkHelpers.loadFixture(deployFixtureBare);
+      await staking.connect(owner).pause();
       await expect(staking.connect(owner).addPlan(30, 0, 0)).to.be.revertedWith("APR must be > 0");
     });
 
     it("reverts addPlan when penalty exceeds 100", async function () {
       const { staking, owner } = await networkHelpers.loadFixture(deployFixtureBare);
+      await staking.connect(owner).pause();
       await expect(staking.connect(owner).addPlan(30, 10, 101)).to.be.revertedWith(
         "Penalty cannot exceed 100",
       );
@@ -141,8 +154,10 @@ describe("StakingContract (UUPS proxy)", function () {
 
     it("assigns sequential plan ids and allows getPlan for each", async function () {
       const { staking, owner } = await networkHelpers.loadFixture(deployFixtureBare);
-      await staking.connect(owner).addPlan(7, 5, 10);
-      await staking.connect(owner).addPlan(14, 7, 20);
+      await whilePaused(staking, owner, async () => {
+        await staking.connect(owner).addPlan(7, 5, 10);
+        await staking.connect(owner).addPlan(14, 7, 20);
+      });
       const p0 = await staking.getPlan(0n);
       const p1 = await staking.getPlan(1n);
       expect(p0.period).to.equal(7n * 24n * 60n * 60n);
@@ -152,13 +167,17 @@ describe("StakingContract (UUPS proxy)", function () {
 
     it("reverts updatePlan for unknown plan id", async function () {
       const { staking, owner } = await networkHelpers.loadFixture(deployFixtureBare);
+      await staking.connect(owner).pause();
       await staking.connect(owner).addPlan(30, 10, 0);
       await expect(staking.connect(owner).updatePlan(5n, 30, 10, 0)).to.be.revertedWith("Plan not found");
     });
 
     it("reverts updatePlan when non-owner", async function () {
       const { staking, owner, alice } = await networkHelpers.loadFixture(deployFixtureBare);
-      await staking.connect(owner).addPlan(30, 10, 0);
+      await whilePaused(staking, owner, async () => {
+        await staking.connect(owner).addPlan(30, 10, 0);
+      });
+      await staking.connect(owner).pause();
       await expect(staking.connect(alice).updatePlan(0n, 30, 10, 0)).to.be.revertedWithCustomError(
         staking,
         "OwnableUnauthorizedAccount",
@@ -167,6 +186,7 @@ describe("StakingContract (UUPS proxy)", function () {
 
     it("reverts updatePlan with invalid parameters", async function () {
       const { staking, owner } = await networkHelpers.loadFixture(deployFixtureBare);
+      await staking.connect(owner).pause();
       await staking.connect(owner).addPlan(30, 10, 0);
       await expect(staking.connect(owner).updatePlan(0n, 0, 10, 0)).to.be.revertedWith("Period must be > 0");
       await expect(staking.connect(owner).updatePlan(0n, 30, 0, 0)).to.be.revertedWith("APR must be > 0");
@@ -177,12 +197,15 @@ describe("StakingContract (UUPS proxy)", function () {
 
     it("reverts getPlan for unknown id", async function () {
       const { staking, owner } = await networkHelpers.loadFixture(deployFixtureBare);
-      await staking.connect(owner).addPlan(30, 10, 0);
+      await whilePaused(staking, owner, async () => {
+        await staking.connect(owner).addPlan(30, 10, 0);
+      });
       await expect(staking.getPlan(99n)).to.be.revertedWith("Plan not found");
     });
 
     it("emits PlanAdded with correct args", async function () {
       const { staking, owner } = await networkHelpers.loadFixture(deployFixtureBare);
+      await staking.connect(owner).pause();
       await expect(staking.connect(owner).addPlan(30, 10, 50))
         .to.emit(staking, "PlanAdded")
         .withArgs(0n, 30n * 24n * 60n * 60n, 10n, 50n);
@@ -190,6 +213,7 @@ describe("StakingContract (UUPS proxy)", function () {
 
     it("emits PlanUpdated with correct args", async function () {
       const { staking, owner } = await networkHelpers.loadFixture(deployFixtureBare);
+      await staking.connect(owner).pause();
       await staking.connect(owner).addPlan(30, 10, 50);
       await expect(staking.connect(owner).updatePlan(0n, 60, 20, 25))
         .to.emit(staking, "PlanUpdated")
@@ -198,12 +222,14 @@ describe("StakingContract (UUPS proxy)", function () {
 
     it("new stake after updatePlan uses updated params", async function () {
       const { staking, owner, alice, token, stakingAddr } = await networkHelpers.loadFixture(deployFixtureBare);
-      await staking.connect(owner).addPlan(30, 10, 50);
       await token.connect(owner).approve(stakingAddr, ethers.MaxUint256);
-      await staking.connect(owner).depositRewards(ethers.parseEther("10000"));
+      await whilePaused(staking, owner, async () => {
+        await staking.connect(owner).addPlan(30, 10, 50);
+        await staking.connect(owner).depositRewards(ethers.parseEther("10000"));
+        await staking.connect(owner).updatePlan(0n, 60, 20, 10);
+      });
       await token.mint(alice, ethers.parseEther("1000"));
       await token.connect(alice).approve(stakingAddr, ethers.MaxUint256);
-      await staking.connect(owner).updatePlan(0n, 60, 20, 10);
       await staking.connect(alice).createStake(0n, ethers.parseEther("100"));
       const s = await staking.getStake(0n);
       expect(s.apr).to.equal(20n);
@@ -213,15 +239,19 @@ describe("StakingContract (UUPS proxy)", function () {
 
     it("keeps APR/penalty snapshot on open stakes when plan is updated", async function () {
       const { staking, owner, alice, token, stakingAddr } = await networkHelpers.loadFixture(deployFixtureBare);
-      await staking.connect(owner).addPlan(30, 10, 50);
       await token.connect(owner).approve(stakingAddr, ethers.MaxUint256);
-      await staking.connect(owner).depositRewards(ethers.parseEther("10000"));
+      await whilePaused(staking, owner, async () => {
+        await staking.connect(owner).addPlan(30, 10, 50);
+        await staking.connect(owner).depositRewards(ethers.parseEther("10000"));
+      });
       await token.mint(alice, ethers.parseEther("1000"));
       await token.connect(alice).approve(stakingAddr, ethers.MaxUint256);
 
       const amount = ethers.parseEther("1000");
       await staking.connect(alice).createStake(0n, amount);
-      await staking.connect(owner).updatePlan(0n, 90, 99, 10);
+      await whilePaused(staking, owner, async () => {
+        await staking.connect(owner).updatePlan(0n, 90, 99, 10);
+      });
 
       const stakeAfter = await staking.getStake(0n);
       expect(stakeAfter.apr).to.equal(10n);
@@ -230,7 +260,6 @@ describe("StakingContract (UUPS proxy)", function () {
       const elapsed = 5n * 24n * 60n * 60n;
       await networkHelpers.time.increase(elapsed);
       const pending = await staking.pendingReward(0n);
-      // pendingReward now returns penalty-adjusted value; plan has 50% penalty so halve the gross
       const grossApprox = expectedReward(amount, 10, elapsed);
       const approx = (grossApprox * 50n) / 100n;
       const slack = rewardPerSeconds(amount, 10, 3n);
@@ -253,12 +282,14 @@ describe("StakingContract (UUPS proxy)", function () {
 
     it("reverts when amount is zero", async function () {
       const { staking, owner } = await networkHelpers.loadFixture(deployFixture);
+      await staking.connect(owner).pause();
       await expect(staking.connect(owner).depositRewards(0n)).to.be.revertedWith("Amount must be > 0");
     });
 
     it("reverts when owner has not approved allowance", async function () {
       const { staking, owner, token } = await networkHelpers.loadFixture(deployFixtureBare);
       await token.mint(owner, ethers.parseEther("10"));
+      await staking.connect(owner).pause();
       await expect(staking.connect(owner).depositRewards(ethers.parseEther("1"))).to.revert(ethers);
     });
 
@@ -267,7 +298,9 @@ describe("StakingContract (UUPS proxy)", function () {
       await token.mint(owner, ethers.parseEther("500"));
       await token.connect(owner).approve(stakingAddr, ethers.MaxUint256);
       const before = await token.balanceOf(stakingAddr);
-      await staking.connect(owner).depositRewards(ethers.parseEther("500"));
+      await whilePaused(staking, owner, async () => {
+        await staking.connect(owner).depositRewards(ethers.parseEther("500"));
+      });
       expect(await token.balanceOf(stakingAddr)).to.equal(before + ethers.parseEther("500"));
     });
   });
@@ -346,9 +379,11 @@ describe("StakingContract (UUPS proxy)", function () {
     it("reverts when user has insufficient token balance", async function () {
       const { staking, alice, token, stakingAddr } = await networkHelpers.loadFixture(deployFixtureBare);
       const [owner] = await ethers.getSigners();
-      await staking.connect(owner).addPlan(30, 10, 0);
       await token.connect(owner).approve(stakingAddr, ethers.MaxUint256);
-      await staking.connect(owner).depositRewards(ethers.parseEther("10000"));
+      await whilePaused(staking, owner, async () => {
+        await staking.connect(owner).addPlan(30, 10, 0);
+        await staking.connect(owner).depositRewards(ethers.parseEther("10000"));
+      });
       await token.mint(alice, ethers.parseEther("1"));
       await token.connect(alice).approve(stakingAddr, ethers.MaxUint256);
       await expect(staking.connect(alice).createStake(0n, ethers.parseEther("100"))).to.revert(ethers);
@@ -357,9 +392,11 @@ describe("StakingContract (UUPS proxy)", function () {
     it("reverts when user has not approved token", async function () {
       const { staking, alice, token, stakingAddr } = await networkHelpers.loadFixture(deployFixtureBare);
       const [owner] = await ethers.getSigners();
-      await staking.connect(owner).addPlan(30, 10, 0);
       await token.connect(owner).approve(stakingAddr, ethers.MaxUint256);
-      await staking.connect(owner).depositRewards(ethers.parseEther("10000"));
+      await whilePaused(staking, owner, async () => {
+        await staking.connect(owner).addPlan(30, 10, 0);
+        await staking.connect(owner).depositRewards(ethers.parseEther("10000"));
+      });
       await token.mint(alice, ethers.parseEther("100"));
       await expect(staking.connect(alice).createStake(0n, ethers.parseEther("1"))).to.revert(ethers);
     });
@@ -477,14 +514,16 @@ describe("StakingContract (UUPS proxy)", function () {
   describe("Penalty boundaries", function () {
     it("0% penalty: early unstake pays full raw reward", async function () {
       const { staking, owner, alice, token, stakingAddr } = await networkHelpers.loadFixture(deployFixtureBare);
-      await staking.connect(owner).addPlan(30, 10, 0);
       await token.connect(owner).approve(stakingAddr, ethers.MaxUint256);
-      await staking.connect(owner).depositRewards(ethers.parseEther("10000"));
+      await whilePaused(staking, owner, async () => {
+        await staking.connect(owner).addPlan(30, 10, 0);
+        await staking.connect(owner).depositRewards(ethers.parseEther("10000"));
+      });
       await token.mint(alice, ethers.parseEther("100"));
       await token.connect(alice).approve(stakingAddr, ethers.MaxUint256);
       await staking.connect(alice).createStake(0n, ethers.parseEther("100"));
       await networkHelpers.time.increase(10n * 24n * 60n * 60n);
-      const pending = await staking.pendingReward(0n); // no penalty, equals raw
+      const pending = await staking.pendingReward(0n);
       const before = await token.balanceOf(alice.address);
       await staking.connect(alice).unstake(0n);
       const gain = (await token.balanceOf(alice.address)) - before - ethers.parseEther("100");
@@ -495,14 +534,15 @@ describe("StakingContract (UUPS proxy)", function () {
 
     it("100% penalty: early unstake pays zero reward but returns principal", async function () {
       const { staking, owner, alice, token, stakingAddr } = await networkHelpers.loadFixture(deployFixtureBare);
-      await staking.connect(owner).addPlan(30, 10, 100);
       await token.connect(owner).approve(stakingAddr, ethers.MaxUint256);
-      await staking.connect(owner).depositRewards(ethers.parseEther("10000"));
+      await whilePaused(staking, owner, async () => {
+        await staking.connect(owner).addPlan(30, 10, 100);
+        await staking.connect(owner).depositRewards(ethers.parseEther("10000"));
+      });
       await token.mint(alice, ethers.parseEther("100"));
       await token.connect(alice).approve(stakingAddr, ethers.MaxUint256);
       await staking.connect(alice).createStake(0n, ethers.parseEther("100"));
       await networkHelpers.time.increase(10n * 24n * 60n * 60n);
-      // pendingReward returns 0 when penalty is 100%
       expect(await staking.pendingReward(0n)).to.equal(0n);
       const before = await token.balanceOf(alice.address);
       await staking.connect(alice).unstake(0n);

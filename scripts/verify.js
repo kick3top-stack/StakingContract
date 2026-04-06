@@ -14,7 +14,12 @@ import path from "path";
  *   PROXY_ADDRESS, IMPL_ADDRESS, STAKING_TOKEN, PROXY_OWNER, MOCK_TOKEN_ADDRESS
  */
 
-const networkName = process.env.HARDHAT_NETWORK ?? "unknown";
+const { ethers } = await network.connect();
+const [deployer] = await ethers.getSigners();
+
+const { chainId } = await ethers.provider.getNetwork();
+const chainNetworkMap = { 1n: "mainnet", 11155111n: "sepolia", 31337n: "localhost" };
+const networkName = chainNetworkMap[chainId] ?? process.env.HARDHAT_NETWORK ?? `chain-${chainId}`;
 const deploymentFile = path.resolve("deployments", `${networkName}.json`);
 
 let saved = {};
@@ -24,9 +29,6 @@ if (fs.existsSync(deploymentFile)) {
 } else {
   console.warn(`No deployment file found at ${deploymentFile} — falling back to env vars.`);
 }
-
-const { ethers } = await network.connect();
-const [deployer] = await ethers.getSigners();
 
 const proxyAddr     = process.env.PROXY_ADDRESS?.trim()       || saved.proxy;
 const implAddr      = process.env.IMPL_ADDRESS?.trim()        || saved.implementation;
