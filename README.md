@@ -1,53 +1,66 @@
 # StakingContract
 
-Multi-plan ERC20 staking: each stake is a separate **position** with its own lock end, APR, and reward accounting. Admins configure plans and whitelisted staking tokens; rewards are paid in the same token as the stake.
+Multi-plan ERC20 staking: each stake is a separate **position** with its own lock end, APR, and reward accounting. The **implementation** is **UUPS upgradeable** and **pausable**; users interact with the **ERC-1967 proxy** address (constant for your app). One staking token is set in `initialize`.
+
 
 ## Architecture
 
 | Piece | Role |
-|--------|------|
-| `StakingContract.sol` | Core logic: plans, stakes, `claimReward`, `unstake`, `depositRewards` |
-| `contracts/mocks/MockERC20.sol` | Test / local token with `mint` — optional deploy via `DEPLOY_MOCK_TOKEN` |
-| `scripts/deploy.js` | Deploy `StakingContract`; optional token whitelist and example plans |
+|-------|------|
+| `StakingContract.sol` | Upgradeable implementation: `OwnableUpgradeable` + `PausableUpgradeable` + `UUPSUpgradeable`; `initialize(token, owner)`; `pause` / `unpause`; `upgradeToAndCall` (owner) |
+| `contracts/proxy/StakingERC1967Proxy.sol` | Thin `ERC1967Proxy` subclass so Hardhat/deploy scripts have an artifact |
+> Update this table after each deployment. Always use the **proxy** address for integrations — never the implementation.PLOY_MOCK_TOKEN` |
+| `scripts/deploy.js` | Deploy implementation + proxy, `initialize`, optional plans, saves `deployments/<network>.json` |
+| `scripts/verify.js` | Verify implementation + proxy on Etherscan, reads addresses from `deployments/<network>.json` |
 
-**Plans** (`struct Plan`): lock duration (`period` in seconds), `apr` as whole percent (e.g. `10` = 10%), `penalty` (0–100) applied to the **reward** on early `unstake`, and `active` (soft-delete via `deletePlan`).
+**Proxy vs implementation**: Integrate wallets and indexers with the **proxy** address. The implementation address can change after an upgrade; read it via `implementation()` on the proxy (or block explorer "Read as proxy").
 
-**Positions** (`struct Stake`): one row per `createStake` — `planId`, `token`, `amount`, `startTime`, `endTime`, `lastClaimTime`, `staker`, etc. A user may hold many stakes across plans and time.
+**Token**: `IERC20 public stakingToken` — set in `initialize` (proxies cannot use `immutable`; treat the token as fixed by product policy).
 
-**Access control**: OpenZeppelin `Ownable` for admin functions; `ReentrancyGuard` on user entrypoints.
+**Plans** (`struct Plan`): lock duration (`period` in seconds), `apr` as whole percent (e.g. `10` = 10%), `penalty` (0–100) applied to the **reward** portion on early `unstake`. Plans are identified by id `0 … nextPlanId - 1`; there is no plan deletion.
 
-**Reward liquidity**: The contract does not mint rewards. The owner must `depositRewards` with the same ERC20 so `claimReward` / `unstake` transfers succeed.
+**Positions** (`struct Stake`): one row per `createStake` — `planId`, `amount`, **`apr` / `penalty` (snapshot at open)**, `startTime`, `endTime`, `staker`. Lock end is fixed at open; rewards use the snapshot APR/penalty, not the live plan. Stakes are indexed by user via `_stakesByUser` (`getStakeIdsByUser`, `getStakeCountByUser`, `getStakesByUser`).
+
+**Access control**: `OwnableUpgradeable` — owner upgrades the implementation, pauses, manages plans, and funds rewards.
+
+**Pausable**: `pause()` / `unpause()` are **owner-only**. `createStake` and `unstake` use `whenNotPaused`; `depositRewards`, `addPlan`, `updatePlan`, and pause/unpause still work while paused so you can recover or top up reserves.
+
+**Reentrancy**: OpenZeppelin **`ReentrancyGuard`** (`nonReentrant` on `createStake` / `unstake`). Uses a dedicated EIP-7201 storage slot — safe through an ERC-1967 proxy on OZ v5+.
+
+**Reward liquidity**: The contract does not mint rewards. The owner must `depositRewards(amount)` (after `approve` to the **proxy** address). It is the owner's responsibility to keep reserves funded — if the contract cannot cover a reward at `unstake` time the transaction will revert.
+
+**Upgrades (UUPS)**: Owner calls `upgradeToAndCall(newImplementation, data)` on the **proxy**. New implementations must preserve storage layout (append-only).
 
 ## Reward formula
 
-Accrual uses elapsed time since `lastClaimTime`, capped at `endTime` (lock end):
+Gross accrual uses staking duration from `startTime` up to `min(now, endTime)`:
 
-\[
-\text{reward} = \frac{\text{principal} \times \text{APR} \times \text{elapsed}}{100 \times \text{YEAR}}
-\]
+```
+raw = (principal × APR × elapsed) / (100 × YEAR)
+```
 
-- `APR` is a whole number percent (8 means 8%).
-- `YEAR = 365 days` (Solidity `365 days`).
+- `APR` is a whole-number percent (`8` = 8%).
+- `YEAR = 365 days`.
 
-On **early** `unstake` (`block.timestamp < endTime`), the contract pays:
+**After lock** (`now >= endTime`): `reward = raw` (full term, no penalty).
 
-\[
-\text{reward} = \left\lfloor \frac{\text{principal} \times \text{APR} \times (\text{now} - \text{lastClaimTime})}{100 \times \text{YEAR}} \right\rfloor \times \frac{100 - \text{penalty}}{100}
-\]
+**Early unstake** (`now < endTime`): `reward = raw × (100 - penalty) / 100` — penalty applies only to the reward; principal is always returned in full.
 
-`claimReward` before lock end pays the **uncapped** formula (no penalty). Penalty applies only to rewards settled at **early** `unstake`. `pendingReward` does not include the early-unstake penalty.
+**`pendingReward(stakeId)`** returns the **penalty-adjusted** amount — i.e. exactly what the user would receive as reward if they called `unstake` right now. After the lock ends it returns the full gross reward.
+
+## Plan updates vs existing stakes
+
+When a user calls `createStake`, the contract copies the plan's `apr`, `penalty`, and `period` into the position. Later `updatePlan` changes only the **template** for **new** stakes. Open positions keep their original APR, penalty, and lock end.
 
 ## Key assumptions
 
-1. **Decimals**: The formula is token-decimal agnostic; APR is applied to the raw `amount` units. Treat amounts as consistent with your token’s decimals.
-2. **Solvency**: There is no on-chain check that the contract holds enough ERC20 to cover all pending rewards.
-3. **Plan changes**: `updatePlan` affects **existing** open stakes on that `planId` (APR/period/penalty read from storage on each interaction).
-4. **Supported tokens**: Only `addToken` addresses may be staked; staking pulls principal via `safeTransferFrom`.
-5. **Soft-deleted plans**: `deletePlan` blocks new stakes and `getPlan`; existing stakes still unwind using stored plan parameters.
+1. **Decimals**: APR is applied to raw `amount` units — consistent with your token's decimals.
+2. **Solvency**: There is no on-chain check that reserves cover pending rewards. Keep the contract well-funded — if balance runs dry, `unstake` will revert when trying to pay rewards.
+3. **Plan changes**: `updatePlan` affects **new** stakes only. Lock length for an existing position is fixed at `endTime`.
 
 ## Prerequisites
 
-- Node.js 18+ (for native ESM / top-level `await` in tests and scripts)
+- Node.js 18+
 
 ## Install
 
@@ -67,96 +80,81 @@ npx hardhat compile
 npx hardhat test
 ```
 
-That uses Hardhat’s **in-process** network (nothing listens on a port; the chain is discarded when the process exits).
+### Against a local JSON-RPC node
 
-### Tests against a local JSON-RPC node
-
-To hit a **persistent local testnet** (same as `deploy --network localhost`):
-
-**Terminal A** — start the node (default `http://127.0.0.1:8545`, matches `hardhat.config.js` → `localhost`):
-
+Terminal A:
 ```bash
 npx hardhat node
 ```
 
-**Terminal B** — run the suite against that RPC:
-
+Terminal B:
 ```bash
 npx hardhat test --network localhost
 ```
 
-You can combine with Mocha filters, for example:
-
-```bash
-npx hardhat test --network localhost --grep Admin
-```
-
-Tests use Hardhat 3 with Mocha, `ethers` v6, and `@nomicfoundation/hardhat-network-helpers` (`loadFixture`, `time.increase`). Assertions allow a small time slack because the reward view and the executing transaction can fall on adjacent blocks.
-
 ## Deploy
 
-`scripts/deploy.js` deploys `StakingContract` from the first signer on the selected network. Optional environment variables:
+After deploy, addresses are saved to `deployments/<network>.json` automatically.
 
 | Variable | Effect |
 |----------|--------|
-| `STAKING_TOKEN` | ERC20 address passed to `addToken` after deploy |
-| `DEPLOY_MOCK_TOKEN` | If `true` / `1` and `STAKING_TOKEN` is unset, deploy `MockERC20` and whitelist it (for local / dev only) |
-| `SETUP_EXAMPLE_PLANS` | If `true` / `1`, add four plans: 30d @ 8%, 90d @ 12%, 180d @ 16%, 365d @ 20% APR |
-| `EARLY_PENALTY_PERCENT` | Used with `SETUP_EXAMPLE_PLANS` (default `50`); must be 0–100 |
+| `STAKING_TOKEN` | ERC20 address passed to `initialize` |
+| `DEPLOY_MOCK_TOKEN` | `true` / `1` — deploy `MockERC20` first (local/dev only, blocked on mainnet) |
+| `PROXY_OWNER` | Ownable / upgrade / pause owner (defaults to deployer) |
+| `SETUP_EXAMPLE_PLANS` | `true` / `1` — add four plans: 30/90/180/365 days |
+| `EARLY_PENALTY_PERCENT` | Used with `SETUP_EXAMPLE_PLANS` (default `50`; must be 0–100) |
 
-On **Ethereum mainnet**, `DEPLOY_MOCK_TOKEN` is rejected by the script (use a real `STAKING_TOKEN`).
+**Local node** (run `npx hardhat node` first):
 
-**Default in-process network** (state is not persisted after the process exits):
-
-```bash
-npx hardhat run scripts/deploy.js
-```
-
-**Local JSON-RPC node** (terminal A: `npx hardhat node`; default port `8545`):
-
-```bash
+```powershell
+$env:DEPLOY_MOCK_TOKEN="true"; $env:SETUP_EXAMPLE_PLANS="true"
 npx hardhat run scripts/deploy.js --network localhost
 ```
 
-**Sepolia** (only if `SEPOLIA_RPC_URL` and `SEPOLIA_PRIVATE_KEY` are set — see `hardhat.config.js`):
+**Sepolia**:
 
-```bash
-set SEPOLIA_RPC_URL=https://...
-set SEPOLIA_PRIVATE_KEY=0x...
+```powershell
+$env:SEPOLIA_RPC_URL="https://sepolia.infura.io/v3/YOUR_KEY"
+$env:SEPOLIA_PRIVATE_KEY="0xYOUR_KEY"
+$env:STAKING_TOKEN="0xYOUR_ERC20"
+$env:SETUP_EXAMPLE_PLANS="true"
 npx hardhat run scripts/deploy.js --network sepolia
 ```
 
-**Ethereum mainnet** (only if `MAINNET_RPC_URL` and `MAINNET_PRIVATE_KEY` are set in `hardhat.config.js`):
+**Mainnet**: same as Sepolia but use `MAINNET_RPC_URL` / `MAINNET_PRIVATE_KEY` and `--network mainnet`. `DEPLOY_MOCK_TOKEN` is rejected on mainnet.
 
-Use a dedicated deployer key with enough ETH for gas. Never commit keys or put them in the repo.
+> On Unix use `export VAR=value` instead of `$env:VAR=`.
 
-```bash
-set MAINNET_RPC_URL=https://...
-set MAINNET_PRIVATE_KEY=0x...
-set STAKING_TOKEN=0x...your_production_erc20...
-npx hardhat run scripts/deploy.js --network mainnet
+After deploy, fund rewards before users can stake:
+```
+approve(<proxyAddress>, amount)   # on the token contract
+depositRewards(amount)            # on the proxy
 ```
 
-Add plans and reward funding in the same run if you intend to:
+### Sepolia testnet Deployment
+- Mocktoken: 0x7D72143Ee6A6bb2E710e1Aa3CE19fcFBA3423220
+- StakingContract: 0x1A14477D67bFdD5a7CcB46b8433A7Ce495276e43
+- Proxy: 0x08c4390bf06080E8775Ed2c5fb5C4E36a465435C
 
-```bash
-set SETUP_EXAMPLE_PLANS=true
+## Verify on Etherscan
+
+Requires an [Etherscan API key](https://etherscan.io/myapikey) and a completed deploy (so `deployments/<network>.json` exists).
+
+Add to `hardhat.config.js` → `verify.etherscan.apiKey` (already wired via `configVariable("ETHERSCAN_API_KEY")`), then:
+
+```powershell
+$env:ETHERSCAN_API_KEY="YOUR_KEY"
+npx hardhat run scripts/verify.js --network sepolia
 ```
 
-Review APRs, lock lengths, and penalties before enabling `SETUP_EXAMPLE_PLANS` on mainnet; they are real economic parameters. After deploy, verify the contract (e.g. Hardhat verify / Etherscan) and transfer `Ownable` to a multisig if required.
+The script reads proxy and implementation addresses from `deployments/sepolia.json` automatically — no copy-pasting needed. It verifies both contracts and prints the Etherscan link.
 
-Example one-shot local setup with mock token and example plans:
+### Verify URLs(Sepolia testnet)
 
-```bash
-set DEPLOY_MOCK_TOKEN=true
-set SETUP_EXAMPLE_PLANS=true
-npx hardhat run scripts/deploy.js --network localhost
-```
+- StakingContract.sol   https://sepolia.etherscan.io/address/0x1A14477D67bFdD5a7CcB46b8433A7Ce495276e43#code
+- Proxy https://sepolia.etherscan.io/address/0x08c4390bf06080E8775Ed2c5fb5C4E36a465435C#code
 
-(Use `export` instead of `set` on Unix shells.)
-
-After deploy, the owner must fund rewards (`depositRewards` after `approve`, or transfer tokens and ensure allowance for `depositRewards`).
 
 ## Hardhat config
 
-This repo targets **Hardhat 3** and uses `@nomicfoundation/hardhat-toolbox-mocha-ethers` (not the deprecated `hardhat-toolbox` `latest` package, which does not load under Hardhat 3). Optional networks in `hardhat.config.js`: `localhost`, `sepolia` (`SEPOLIA_RPC_URL` + `SEPOLIA_PRIVATE_KEY`), and `mainnet` (`MAINNET_RPC_URL` + `MAINNET_PRIVATE_KEY`, `chainId: 1`).
+Targets **Hardhat 3** with `@nomicfoundation/hardhat-toolbox-mocha-ethers`. Networks: `localhost`, `sepolia` (opt-in via env), `mainnet` (opt-in via env). Etherscan verification via `verify.etherscan.apiKey`.

@@ -1,218 +1,260 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract StakingContract is Ownable, ReentrancyGuard {
+/**
+ * @title StakingContract
+ * @dev UUPS upgradeable + {Pausable}. Deploy behind an {ERC1967Proxy} and call `initialize`.
+ *      Uses OpenZeppelin {ReentrancyGuard} (EIP-7201 storage slot; safe through ERC-1967 proxy).
+ */
+contract StakingContract is OwnableUpgradeable, PausableUpgradeable, UUPSUpgradeable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     uint private constant YEAR = 365 days;
 
     struct Plan {
-        uint period;  
-        uint apr;     
-        uint penalty; 
-        bool active;
+        uint period;
+        uint apr;
+        uint penalty;
     }
 
     struct Stake {
         uint planId;
-        uint stakeId;
-        address token;
         uint amount;
+        uint apr;
+        uint penalty;
         uint startTime;
         uint endTime;
-        uint lastClaimTime;
-        uint claimedReward;
         address staker;
     }
 
+    IERC20 public stakingToken;
+
     mapping(uint => Plan) private _plans;
-    uint private _currentPlanId;
+    uint private _nextPlanId;
 
     mapping(uint => Stake) private _stakes;
-    uint private _currentStakeId;
+    uint private _nextStakeId;
 
-    mapping(address => uint[]) private _userStakeIds;
+    mapping(address => uint[]) private _stakesByUser;
 
-    mapping(address => bool) private _isTokenSupported;
+    uint public totalStaked;      // sum of all active stake amounts
+    uint public totalStakers;     // unique addresses that have ever staked
+    uint public rewardPool;       // tokens deposited via depositRewards
+    mapping(address => bool) private _hasStaked;
 
     event PlanAdded(uint indexed planId, uint period, uint apr, uint penalty);
     event PlanUpdated(uint indexed planId, uint period, uint apr, uint penalty);
-    event PlanDeleted(uint indexed planId);
-    event TokenAdded(address indexed token);
-    event StakeCreated(uint indexed stakeId, address indexed staker, uint planId, address token, uint amount);
+    event StakeCreated(
+        uint indexed stakeId,
+        address indexed staker,
+        uint indexed planId,
+        uint amount,
+        uint apr,
+        uint penalty
+    );
     event Unstaked(uint indexed stakeId, address indexed staker, uint amount, uint reward);
-    event RewardClaimed(uint indexed stakeId, address indexed staker, uint reward);
 
-    constructor() Ownable(msg.sender) {}
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
 
-    function addPlan(uint _days, uint _apr, uint _penalty) external onlyOwner {
+    function initialize(address _stakingToken, address initialOwner) public initializer {
+        __Ownable_init(initialOwner);
+        __Pausable_init();
+        require(_stakingToken != address(0), "Zero token");
+        stakingToken = IERC20(_stakingToken);
+    }
+
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    function unpause() external onlyOwner whenPaused {
+        _unpause();
+    }
+
+    function addPlan(uint _days, uint _apr, uint _penalty) external whenPaused onlyOwner {
         require(_days > 0, "Period must be > 0");
         require(_apr > 0, "APR must be > 0");
         require(_penalty <= 100, "Penalty cannot exceed 100");
-        uint planId = _currentPlanId++;
-        _plans[planId] = Plan({
-            period: _days * 1 days,
-            apr: _apr,
-            penalty: _penalty,
-            active: true
-        });
+        uint planId = _nextPlanId++;
+        _plans[planId] = Plan({period: _days * 1 days, apr: _apr, penalty: _penalty});
         emit PlanAdded(planId, _days * 1 days, _apr, _penalty);
     }
 
-    function updatePlan(uint _planId, uint _days, uint _apr, uint _penalty) external onlyOwner {
-        require(_plans[_planId].active, "Plan not found");
+    /// @notice Updates the plan template for *new* stakes only.
+    function updatePlan(uint _planId, uint _days, uint _apr, uint _penalty) external whenPaused onlyOwner {
+        require(_planId < _nextPlanId, "Plan not found");
         require(_days > 0, "Period must be > 0");
         require(_apr > 0, "APR must be > 0");
         require(_penalty <= 100, "Penalty cannot exceed 100");
-        _plans[_planId].period = _days * 1 days;
-        _plans[_planId].apr = _apr;
-        _plans[_planId].penalty = _penalty;
+        Plan storage p = _plans[_planId];
+        p.period = _days * 1 days;
+        p.apr = _apr;
+        p.penalty = _penalty;
         emit PlanUpdated(_planId, _days * 1 days, _apr, _penalty);
     }
 
-    function deletePlan(uint _planId) external onlyOwner {
-        require(_plans[_planId].active, "Plan not found");
-        _plans[_planId].active = false;
-        emit PlanDeleted(_planId);
+    function depositRewards(uint _amount) external onlyOwner whenPaused {
+        require(_amount > 0, "Amount must be > 0");
+        stakingToken.safeTransferFrom(msg.sender, address(this), _amount);
+        rewardPool += _amount;
     }
 
-    function addToken(address _token) external onlyOwner {
-        require(_token != address(0), "Zero address");
-        require(!_isTokenSupported[_token], "Token already supported");
-        _isTokenSupported[_token] = true;
-        emit TokenAdded(_token);
-    }
-
-    function depositRewards(address _token, uint _amount) external onlyOwner {
-        require(_isTokenSupported[_token], "Token not supported");
-        IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
-    }
-
-    function getPlan(uint _planId) public view returns (Plan memory) {
-        require(_plans[_planId].active, "Plan not found");
-        return _plans[_planId];
-    }
-
-    function getStake(uint _stakeId) public view returns (Stake memory) {
-        require(_stakes[_stakeId].staker != address(0), "Stake not found");
-        return _stakes[_stakeId];
-    }
-
-    function getStakesByUser(address _user) external view returns (Stake[] memory) {
-        uint[] storage ids = _userStakeIds[_user];
-        Stake[] memory result = new Stake[](ids.length);
-        for (uint i = 0; i < ids.length; i++) {
-            result[i] = _stakes[ids[i]];
-        }
-        return result;
-    }
-
-    function pendingReward(uint _stakeId) public view returns (uint) {
-        Stake storage s = _stakes[_stakeId];
-        require(s.staker != address(0), "Stake not found");
-        Plan storage plan = _plans[s.planId];
-
-        uint elapsed = _clampElapsed(s.lastClaimTime, s.endTime);
-        return s.amount * plan.apr * elapsed / (100 * YEAR);
-    }
-
-    function createStake(uint _planId, address _token, uint _amount) external nonReentrant {
-        require(_plans[_planId].active, "Plan not found");
-        require(_isTokenSupported[_token], "Token not supported");
+    function createStake(uint _planId, uint _amount) external whenNotPaused nonReentrant {
+        require(_planId < _nextPlanId, "Plan not found");
         require(_amount > 0, "Amount must be > 0");
 
         Plan memory plan = _plans[_planId];
-        IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
+        stakingToken.safeTransferFrom(msg.sender, address(this), _amount);
 
-        uint stakeId = _currentStakeId++;
+        uint stakeId = _nextStakeId++;
+        uint t = block.timestamp;
         _stakes[stakeId] = Stake({
             planId: _planId,
-            stakeId: stakeId,
-            token: _token,
             amount: _amount,
-            startTime: block.timestamp,
-            endTime: block.timestamp + plan.period,
-            lastClaimTime: block.timestamp,
-            claimedReward: 0,
+            apr: plan.apr,
+            penalty: plan.penalty,
+            startTime: t,
+            endTime: t + plan.period,
             staker: msg.sender
         });
-        _userStakeIds[msg.sender].push(stakeId);
+        _stakesByUser[msg.sender].push(stakeId);
+        totalStaked += _amount;
+        if (!_hasStaked[msg.sender]) {
+            _hasStaked[msg.sender] = true;
+            totalStakers++;
+        }
 
-        emit StakeCreated(stakeId, msg.sender, _planId, _token, _amount);
+        emit StakeCreated(stakeId, msg.sender, _planId, _amount, plan.apr, plan.penalty);
     }
 
-    function claimReward(uint _stakeId) external nonReentrant {
+    function unstake(uint _stakeId) external whenNotPaused nonReentrant {
         Stake storage s = _stakes[_stakeId];
         require(s.staker == msg.sender, "Not staker");
-        require(s.staker != address(0), "Stake not found");
 
-        Plan storage plan = _plans[s.planId];
-
-        // Rewards accrue up to endTime; no penalty for normal claims
-        uint elapsed = _clampElapsed(s.lastClaimTime, s.endTime);
-        uint reward = s.amount * plan.apr * elapsed / (100 * YEAR);
-        require(reward > 0, "No reward to claim");
-
-        s.claimedReward += reward;
-        s.lastClaimTime = block.timestamp < s.endTime ? block.timestamp : s.endTime;
-
-        IERC20(s.token).safeTransfer(msg.sender, reward);
-        emit RewardClaimed(_stakeId, msg.sender, reward);
-    }
-
-    function unstake(uint _stakeId) external nonReentrant {
-        Stake storage s = _stakes[_stakeId];
-        require(s.staker == msg.sender, "Not staker");
-        require(s.staker != address(0), "Stake not found");
-
-        Plan storage plan = _plans[s.planId];
-        bool isEarly = block.timestamp < s.endTime;
+        uint upper = block.timestamp < s.endTime ? block.timestamp : s.endTime;
+        uint elapsed = upper > s.startTime ? upper - s.startTime : 0;
+        uint rawReward = s.amount * s.apr * elapsed / (100 * YEAR);
 
         uint reward;
-        if (isEarly) {
-            // Reward for elapsed time, with penalty applied
-            uint elapsed = block.timestamp - s.lastClaimTime;
-            uint rawReward = s.amount * plan.apr * elapsed / (100 * YEAR);
-            reward = rawReward * (100 - plan.penalty) / 100;
+        if (block.timestamp < s.endTime) {
+            reward = rawReward * (100 - s.penalty) / 100;
         } else {
-            // Full reward for remaining unclaimed period, no penalty
-            uint elapsed = _clampElapsed(s.lastClaimTime, s.endTime);
-            reward = s.amount * plan.apr * elapsed / (100 * YEAR);
+            reward = rawReward;
         }
 
         uint principal = s.amount;
-        address token = s.token;
-
         _removeUserStake(msg.sender, _stakeId);
         delete _stakes[_stakeId];
 
-        IERC20(token).safeTransfer(msg.sender, principal);
-        if (reward > 0) {
-            IERC20(token).safeTransfer(msg.sender, reward);
+        totalStaked -= principal;
+        rewardPool -= reward;
+
+        stakingToken.safeTransfer(msg.sender, principal);
+        if (reward != 0) {
+            stakingToken.safeTransfer(msg.sender, reward);
+        }
+
+        if (_stakesByUser[msg.sender].length == 0) {
+            totalStakers--;
+            _hasStaked[msg.sender] = false;
         }
 
         emit Unstaked(_stakeId, msg.sender, principal, reward);
     }
 
-    function _clampElapsed(uint lastClaimTime, uint endTime) private view returns (uint) {
-        uint to = block.timestamp < endTime ? block.timestamp : endTime;
-        if (to <= lastClaimTime) return 0;
-        return to - lastClaimTime;
-    }
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
     function _removeUserStake(address _user, uint _stakeId) private {
-        uint[] storage ids = _userStakeIds[_user];
-        for (uint i = 0; i < ids.length; i++) {
+        uint[] storage ids = _stakesByUser[_user];
+        uint len = ids.length;
+        for (uint i = 0; i < len; ) {
             if (ids[i] == _stakeId) {
-                ids[i] = ids[ids.length - 1];
+                ids[i] = ids[len - 1];
                 ids.pop();
                 break;
             }
+            unchecked {
+                ++i;
+            }
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Views (kept last)
+    // -------------------------------------------------------------------------
+
+    /// @notice ERC-1967 implementation address (only meaningful when called via proxy).
+    function implementation() external view returns (address) {
+        return ERC1967Utils.getImplementation();
+    }
+
+    function getPlan(uint _planId) external view returns (Plan memory) {
+        require(_planId < _nextPlanId, "Plan not found");
+        return _plans[_planId];
+    }
+
+    function getStake(uint _stakeId) external view returns (Stake memory) {
+        Stake memory s = _stakes[_stakeId];
+        require(s.staker != address(0), "Stake not found");
+        return s;
+    }
+
+    function getStakeIdsByUser(address _user) external view returns (uint[] memory) {
+        return _stakesByUser[_user];
+    }
+
+    function getStakeCountByUser(address _user) external view returns (uint) {
+        return _stakesByUser[_user].length;
+    }
+
+    function getStakesByUser(address _user) external view returns (Stake[] memory) {
+        uint[] storage ids = _stakesByUser[_user];
+        uint n = ids.length;
+        Stake[] memory result = new Stake[](n);
+        for (uint i = 0; i < n; ) {
+            result[i] = _stakes[ids[i]];
+            unchecked {
+                ++i;
+            }
+        }
+        return result;
+    }
+
+    function pendingReward(uint _stakeId) external view returns (uint) {
+        Stake storage s = _stakes[_stakeId];
+        require(s.staker != address(0), "Stake not found");
+        uint upper = block.timestamp < s.endTime ? block.timestamp : s.endTime;
+        uint elapsed = upper > s.startTime ? upper - s.startTime : 0;
+        uint rawReward = s.amount * s.apr * elapsed / (100 * YEAR);
+        if (block.timestamp < s.endTime) {
+            return rawReward * (100 - s.penalty) / 100;
+        }
+        return rawReward;
+    }
+
+    /// @notice Total tokens currently locked across all active stakes.
+    function getTotalStaked() external view returns (uint) {
+        return totalStaked;
+    }
+
+    /// @notice Current number of addresses with at least one active stake.
+    function getTotalStakers() external view returns (uint) {
+        return totalStakers;
+    }
+
+    /// @notice Reward tokens available to pay out (deposited minus paid).
+    function getRewardPool() external view returns (uint) {
+        return rewardPool;
     }
 }
